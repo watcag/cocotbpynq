@@ -1,43 +1,46 @@
-Use python3 -m cocotbpynq.sample to see sample
 # cocotbpynq
-cocotbpynq is an extension of cocotb that allows for your PYNQ code to be seamlessly used for simulation. This allows you to debug the AXI transactions that occur between the PL and PS. Currently, there is support for the Pynq Z1 board, although it shouldn't be much different, (if at all), to adapt this code to other PYNQ-compatible FPGAs.
+cocotbpynq is an extension of cocotb that lets PYNQ applications run in simulation. This makes it possible to debug AXI transactions between the programmable logic (PL) and processing system (PS) before deploying to hardware. The included example targets the PYNQ-Z1, and the same approach can be adapted to other PYNQ-compatible platforms.
 
 ## Installation
-Once Python is installed, install cocotbpynq using the following:
+Install cocotbpynq from PyPI:
 
 `pip install cocotbpynq`
 
- Alternatively, clone the repo and use it as an install directory for the most up-to-date version:
+Alternatively, install the latest version from this repository:
 
- `https://github.com/watcag/cocotb-pynq`
+```sh
+git clone https://github.com/watcag/cocotbpynq.git
+cd cocotbpynq
+python3 -m pip install .
+```
 
 
 ## cocotbpynq.sample
 ### How to use cocotbpynq
-There is a sample directory, `src/cocotbpynq/sample` that shows everything needed make use cocotbpynq yourself. It even includes a hardware hand-off file. Specifically, you will want to reference `cocotb_runner.py` and `adapted.py` for development of your own tests.
+The `src/cocotbpynq/sample` directory contains a complete example, including a hardware handoff file. Use `cocotb_runner.py` and `adapted.py` as references when developing your own tests.
 ### Running the sample
 You can run this sample project mentioned above (after installing cocotbpynq) with:
 
 `python3 -m cocotbpynq.sample`
 
-Note that verilator is used in the sample project, so you will need verilator installed for this to work out of the box.
+The sample uses Verilator, which must be installed separately.
 ### Adaptation from PYNQ code
-The `original.py` and `original_vs_adapted.diff` files are there to illustrate how few changes are needed to adapt PYNQ code ALSO be simulation ready. The adaptation should allow you to either run the `cocotb_runner.py` file to run a simulation, or continue to run the adapted file on a PYNQ-compatible board.
+The `original.py` and `original_vs_adapted.diff` files illustrate the changes needed to make PYNQ code simulation-ready. The adapted application can be run either through `cocotb_runner.py` in simulation or on a compatible PYNQ board.
 ### Verilog Description
-The sample is meant to illustrate a simple example with one AXI-Lite port(MMIO), one AXI-Stream read port (DMA send), and one AXI-Stream write port (DMA recv). The circuit performs a simple `y = ax²+bx+c` operation, where a, b, and c are all constants that can be modified/read using the MMIO port at addresses `0x10`, `0x18`, and `0x20` respectively, and `x` and `y` are AXI-Stream write/read ports respectively.
+The sample has one AXI-Lite port (MMIO), one AXI-Stream input (DMA send), and one AXI-Stream output (DMA receive). The circuit computes `y = ax² + bx + c`. The constants `a`, `b`, and `c` can be read or modified through MMIO addresses `0x10`, `0x18`, and `0x20`; `x` and `y` are the streaming input and output.
 
 ### HWH Generation
-HWH file can be generated independantly of bitstream using the following Vivado CLI command:
+The HWH file can be generated independently of the bitstream with this Vivado Tcl command:
 
 `generate_target all <block design file>`
 
-This can be used to circumvent the need to ever to bitstream generation. Unlike bitstream generation, this command only needs to be run if the block diagram is updated.
+This avoids a full bitstream build. Regenerate the HWH file only when the block design changes.
 
 
 ## Acknowledgement
-This paper relies was built on the back of [cocotb](https://github.com/cocotb/cocotb), which is an amazing library in its own right.
+This work builds on [cocotb](https://github.com/cocotb/cocotb).
 
-It also aims to mimic some features from [PYNQ](https://github.com/Xilinx/PYNQ). Naturally, the PYNQ repo was a large source of inspiration/reference for much of the content in this repo.
+It also adapts concepts from [PYNQ](https://github.com/Xilinx/PYNQ), which was an important reference for this project.
 
 ## Paper
-Our paper was presented at the 35th International Conference on Field-Programmable Logic and Applications(FPL 2025). The conference paper can be found here: < Proceedings not available yet >
+The paper, “Cocotb-Pynq: Co-simulating Python+RTL Applications Targeting Pynq Platforms with Cocotb,” was presented at the 35th International Conference on Field-Programmable Logic and Applications (FPL 2025). [Read the paper](https://nachiket.github.io/publications/cocotb-pynq_fpl-2025.pdf).
