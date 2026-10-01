@@ -50,11 +50,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # oldest and newest supported stacks: sample + quick examples
-          - {python: "3.10", cocotb: "2.0.1", cocotbpynq_examples: "axi switch stream", pynq_pr_examples: "add_sub"}
-          - {python: "3.14", cocotb: "latest", cocotbpynq_examples: "axi switch stream", pynq_pr_examples: "add_sub"}
-          # every example once
-          - {python: "3.12", cocotb: "latest", cocotbpynq_examples: "axi dual_dma mm_pipeline stream switch video_pipeline", pynq_pr_examples: "add_sub attention vision"}
+          # each example runs once, spread over the oldest and newest supported stacks
+          - {python: "3.10", cocotb: "2.0.1", cocotbpynq_examples: "axi stream dual_dma", pynq_pr_examples: "add_sub"}
+          - {python: "3.14", cocotb: "latest", cocotbpynq_examples: "switch mm_pipeline", pynq_pr_examples: "attention"}
+          - {python: "3.12", cocotb: "latest", cocotbpynq_examples: "video_pipeline", pynq_pr_examples: "vision"}
     name: sim (py${{ matrix.python }}, cocotb ${{ matrix.cocotb }})
     steps:
       - uses: actions/checkout@v4

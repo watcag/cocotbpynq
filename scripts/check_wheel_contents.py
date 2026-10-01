@@ -10,8 +10,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SRC = {"cocotbpynq": "packages/cocotbpynq/src", "pynq_pr": "packages/pynq-pr/src"}
 
+wheels = sorted(Path(sys.argv[1]).glob("*.whl"))
+found = {w.name.split("-")[0] for w in wheels}
+if found != set(SRC):
+    sys.exit(f"expected wheels for {sorted(SRC)}, found {sorted(found)}")
+
 bad = False
-for wheel in sorted(Path(sys.argv[1]).glob("*.whl")):
+for wheel in wheels:
     src = SRC[wheel.name.split("-")[0]]
     tracked = subprocess.run(["git", "ls-files", src], cwd=ROOT, capture_output=True,
                              text=True, check=True).stdout.split()
