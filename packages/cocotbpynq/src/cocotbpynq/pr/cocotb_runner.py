@@ -79,6 +79,9 @@ class PRCocotbRunner:
         Additional environment variables for the cocotb test process.
     hwh_location_dir : str or Path, optional
         Directory containing the HWH file (for cocotbpynq overlay).
+    hwh_alias : str, optional
+        Also make the auto-generated HWH available as ``<hwh_alias>.hwh``, so
+        tests can call ``Overlay("<hwh_alias>.bit")`` (e.g. the project name).
     waves : bool
         Enable waveform dumping (static region via cocotb + RMs via their own tracers).
         When True, PRSystem.trace is also enabled so RM binaries get VCD/FST support.
@@ -96,6 +99,7 @@ class PRCocotbRunner:
         test_dir: Optional[str] = None,
         extra_env: Optional[Dict[str, str]] = None,
         hwh_location_dir: Optional[str] = None,
+        hwh_alias: Optional[str] = None,
         waves: bool = False,
         merge_waveforms: bool = False,
         merged_waveform_path: Optional[str] = None,
@@ -105,6 +109,7 @@ class PRCocotbRunner:
         self.test_dir = Path(test_dir) if test_dir else Path.cwd()
         self.extra_env = extra_env or {}
         self.hwh_location_dir = hwh_location_dir
+        self.hwh_alias = hwh_alias
         self.waves = waves
         self.merge_waveforms = merge_waveforms
         self.merged_waveform_path = merged_waveform_path
@@ -142,6 +147,9 @@ class PRCocotbRunner:
             reset_active_low=reset_active_low,
             output_name='design',
         )
+        if self.hwh_alias and self.hwh_alias != 'design':
+            import shutil
+            shutil.copyfile(hwh_dir / 'design.hwh', hwh_dir / f'{self.hwh_alias}.hwh')
         logger.info(f"Auto-generated HWH in {hwh_dir}")
         return hwh_dir
 

@@ -11,10 +11,12 @@
 set config_file [lindex $argv 0]
 source $config_file
 
-#do not use vivado 2022.1, DFX doesn't seem to work properly
+# Vivado 2022.1 is known not to work (DFX misbehaves); 2022.2 is the tested version.
 set vivado_version [version -short]
-if { $vivado_version ne "2022.2" } {
-    error "ERROR: Vivado 2022.2 is required. Detected: $vivado_version"
+if { $vivado_version eq "2022.1" } {
+    error "ERROR: Vivado 2022.1 does not work with this flow (DFX issues). Use 2022.2."
+} elseif { $vivado_version ne "2022.2" } {
+    puts "WARNING: pynq-pr is tested with Vivado 2022.2; detected $vivado_version. Continuing."
 }
 
 set script_dir [file dirname [info script]]

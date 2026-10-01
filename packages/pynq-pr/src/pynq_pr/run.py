@@ -10,7 +10,6 @@ Usage:
 import argparse
 import sys
 import os
-import shutil
 from pathlib import Path
 
 
@@ -66,8 +65,7 @@ def run_simulation(config, test, test_dir=None):
     # cocotbpynq resolves paths relative to cwd, so cd to config dir
     os.chdir(config_path.parent)
 
-    from cocotbpynq._pr_engine import PRSystem
-    from cocotbpynq.pr import PRCocotbRunner
+    from cocotbpynq.pr import PRCocotbRunner, PRSystem
 
     with PRSystem(config=str(config_path)) as system:
         print("Building RM binaries (cocotb mode)...")
@@ -75,24 +73,14 @@ def run_simulation(config, test, test_dir=None):
         print("Build complete.")
 
         print("Running cocotbpynq simulation...")
+        # Tests may open the overlay by project name, e.g. Overlay("tutorial_z1.bit")
+        project_hwh_name = config_path.parent.name
         runner = PRCocotbRunner(
             pr_system=system,
             test_module=test_module,
             test_dir=test_dir,
+            hwh_alias=project_hwh_name,
         )
-
-        project_hwh_name = config_path.parent.name
-        if project_hwh_name != "design":
-            original_generate_hwh = runner._generate_hwh
-
-            def _generate_hwh_with_project_alias(build_dir):
-                hwh_dir = Path(original_generate_hwh(build_dir)).resolve()
-                design_hwh = hwh_dir / "design.hwh"
-                project_hwh = hwh_dir / f"{project_hwh_name}.hwh"
-                shutil.copyfile(design_hwh, project_hwh)
-                return hwh_dir
-
-            runner._generate_hwh = _generate_hwh_with_project_alias
 
         num_failed = runner.run()
         print("Done.")
