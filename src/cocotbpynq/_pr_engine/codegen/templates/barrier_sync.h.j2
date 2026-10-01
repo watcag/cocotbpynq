@@ -2,6 +2,7 @@
 #define BARRIER_SYNC_H
 
 #include <cstdint>
+#include <sched.h>
 
 // Shared memory barrier layout (matches Python CycleBarrier)
 // Each field on its own cache line to avoid false sharing.
@@ -22,8 +23,11 @@ static inline void barrier_wait(ShmBarrier* b, uint32_t* local_sense) {
         __atomic_store_n(&b->count, 0, __ATOMIC_RELAXED);
         __atomic_store_n(&b->sense, *local_sense, __ATOMIC_RELEASE);
     } else {
+        // Spin briefly (fastest when every process has its own core), then
+        // yield so machines with fewer cores than processes still progress.
+        unsigned spins = 0;
         while (__atomic_load_n(&b->sense, __ATOMIC_ACQUIRE) != *local_sense) {
-            // spin
+            if (++spins > 1024) sched_yield();
         }
     }
 }

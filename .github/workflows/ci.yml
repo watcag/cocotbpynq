@@ -6,6 +6,10 @@ on:
   schedule:
     - cron: "0 6 * * 1"   # weekly: catch breaking cocotb/pyslang releases
 
+concurrency:   # a newer push to the same branch cancels the stale run
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   package:
     runs-on: ubuntu-latest
@@ -32,11 +36,17 @@ jobs:
   sim:
     needs: package
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.10", "3.14"]
-        cocotb: ["2.0.1", "latest"]
+        include:
+          # oldest and newest supported stacks: sample + quick examples
+          - {python: "3.10", cocotb: "2.0.1", examples: "axi switch stream"}
+          - {python: "3.14", cocotb: "latest", examples: "axi switch stream"}
+          # full example suite once
+          - {python: "3.12", cocotb: "latest", examples: "axi dual_dma mm_pipeline stream switch video_pipeline"}
+    name: sim (py${{ matrix.python }}, cocotb ${{ matrix.cocotb }})
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -49,10 +59,12 @@ jobs:
           if [ "${{ matrix.cocotb }}" != "latest" ]; then pip install "cocotb==${{ matrix.cocotb }}"; fi
           pip list | grep -iE "cocotb|pyslang|verilator"
       - name: Sample
-        run: mkdir -p /tmp/sample && cd /tmp/sample && python -m cocotbpynq.sample
+        run: mkdir -p /tmp/sample && cd /tmp/sample && timeout 300 python -m cocotbpynq.sample
       - name: PR examples
         run: |
           set -e
-          for e in examples/*_pr_example; do
-            echo "::group::$e"; (cd "$e" && python run.py); echo "::endgroup::"
+          for e in ${{ matrix.examples }}; do
+            echo "::group::$e"
+            (cd "examples/${e}_pr_example" && timeout 300 python run.py)
+            echo "::endgroup::"
           done

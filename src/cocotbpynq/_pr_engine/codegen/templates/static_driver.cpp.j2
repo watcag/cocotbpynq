@@ -235,7 +235,7 @@ int main(int argc, char** argv) {
             ShmPartitionHeader* hdr = g_partition_headers[reconfig_partition];
             // Wait for new RM to be ready
             while (!shm_load32(&hdr->rm_ready)) {
-                // spin — Python starts new RM which sets rm_ready
+                sched_yield();  // Python starts new RM which sets rm_ready
             }
             // Clear reconfig state
             shm_store32(&hdr->quit, 0);
