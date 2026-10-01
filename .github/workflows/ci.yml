@@ -13,22 +13,31 @@ concurrency:   # a newer push to the same branch cancels the stale run
 jobs:
   package:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
       - run: pip install build twine
-      - run: python -m build && twine check dist/*
-      - name: Wheel contains non-Python files
+      - name: Both packages share one version
+        run: python scripts/check_versions.py
+      - name: Build both packages
         run: |
-          python - <<'PY'
-          import glob, zipfile
-          n = zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist()
-          assert sum(x.endswith(".j2") for x in n) == 14, "codegen templates missing"
-          for f in ["_pr_engine/rtl/axis_switch.sv", "sample/sample.hwh", "sample/poly_axi.v",
-                    "sample/original_vs_adapted.diff"]:
-              assert any(x.endswith(f) for x in n), f + " missing"
-          print("wheel contents OK")
+          python -m build packages/cocotbpynq -o dist
+          python -m build packages/pynq-pr -o dist
+          twine check dist/*
+      - name: Wheels contain every tracked package file
+        run: python scripts/check_wheel_contents.py dist
+      - name: Board install of pynq-pr stays light (no cocotb, numpy or cocotbpynq)
+        run: |
+          python -m venv /tmp/board
+          /tmp/board/bin/pip install dist/pynq_pr-*.whl
+          /tmp/board/bin/python - <<'PY'
+          from importlib.metadata import distributions
+          names = {d.metadata["Name"].lower() for d in distributions()}
+          extra = names & {"cocotb", "numpy", "cocotbpynq"}
+          assert not extra, f"board install pulled in {extra}"
+          print("board install:", sorted(names))
           PY
       - uses: actions/upload-artifact@v4
         with: {name: dist, path: dist/}
@@ -42,10 +51,10 @@ jobs:
       matrix:
         include:
           # oldest and newest supported stacks: sample + quick examples
-          - {python: "3.10", cocotb: "2.0.1", examples: "axi switch stream"}
-          - {python: "3.14", cocotb: "latest", examples: "axi switch stream"}
-          # full example suite once
-          - {python: "3.12", cocotb: "latest", examples: "axi dual_dma mm_pipeline stream switch video_pipeline"}
+          - {python: "3.10", cocotb: "2.0.1", cocotbpynq_examples: "axi switch stream", pynq_pr_examples: "add_sub"}
+          - {python: "3.14", cocotb: "latest", cocotbpynq_examples: "axi switch stream", pynq_pr_examples: "add_sub"}
+          # every example once
+          - {python: "3.12", cocotb: "latest", cocotbpynq_examples: "axi dual_dma mm_pipeline stream switch video_pipeline", pynq_pr_examples: "add_sub attention vision"}
     name: sim (py${{ matrix.python }}, cocotb ${{ matrix.cocotb }})
     steps:
       - uses: actions/checkout@v4
@@ -53,18 +62,26 @@ jobs:
         with: {python-version: "${{ matrix.python }}"}
       - uses: actions/download-artifact@v4
         with: {name: dist, path: dist/}
-      - name: Install the built wheel (not the checkout)
+      - name: Install the built wheels (not the checkout)
         run: |
-          pip install "$(ls dist/*.whl)[examples]" verilator==5.48.0
+          pip install "$(ls dist/cocotbpynq-*.whl)[examples]" "$(ls dist/pynq_pr-*.whl)[sim,examples]" verilator==5.48.0
           if [ "${{ matrix.cocotb }}" != "latest" ]; then pip install "cocotb==${{ matrix.cocotb }}"; fi
-          pip list | grep -iE "cocotb|pyslang|verilator"
+          pip list | grep -iE "cocotb|pynq|pyslang|verilator"
       - name: Sample
         run: mkdir -p /tmp/sample && cd /tmp/sample && timeout 300 python -m cocotbpynq.sample
-      - name: PR examples
+      - name: cocotbpynq PR examples
         run: |
           set -e
-          for e in ${{ matrix.examples }}; do
-            echo "::group::$e"
-            (cd "examples/${e}_pr_example" && timeout 300 python run.py)
-            echo "::endgroup::"
+          for e in ${{ matrix.cocotbpynq_examples }}; do
+            echo "::group::$e"; (cd "examples/cocotbpynq/${e}_pr_example" && timeout 300 python run.py); echo "::endgroup::"
+          done
+      - name: pynq-pr validate (all example configs)
+        run: |
+          set -e
+          for c in examples/pynq-pr/*/pr_*.yaml; do (cd "$(dirname $c)" && pynq-pr validate -c "$(basename $c)"); done
+      - name: pynq-pr examples
+        run: |
+          set -e
+          for e in ${{ matrix.pynq_pr_examples }}; do
+            echo "::group::$e"; (cd "examples/pynq-pr/$e" && timeout 300 pynq-pr sim -c pr_z1.yaml --test pr_test.py -f); echo "::endgroup::"
           done

@@ -1,0 +1,9 @@
+This directory contains third-party RTL and a packaged Vivado IP from VERSATILE,
+a partial-reconfiguration (DPR) controller:
+
+  M. Ibrahim, S. Pillement, A. Pinna, and S. Le Nours, "VERSATILE: Very fast
+  partial reconfiguration controller," ACM Transactions on Reconfigurable
+  Technology and Systems, vol. 18, no. 3, Sep. 2025.
+
+It is not covered by the pynq-pr license. Its redistribution terms are being
+confirmed with the authors; until then, contact them before reusing it.

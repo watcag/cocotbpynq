@@ -1,0 +1,51 @@
+module ICAPE2_WRAPPER (
+	input wire        clk,
+	input wire        rstn,
+	input wire        ICAP_CSIB,
+	input wire [31:0] ICAP_DATA,
+	input wire        ICAP_RDWRB,
+	output wire       ICAP_ERR
+);
+	// ICAPE data needs to be word reversed when generated using vivado write_bitstream
+	// Original VERSATILE wrapper did it in firmware but we can do it in hardware for free!
+	reg [31:0] DATA_Reversed;
+	reg rdwrb_reg;
+	reg csib_reg;
+
+	always @(posedge clk) begin
+		if (rstn == 0) begin
+			DATA_Reversed <= 0;
+			rdwrb_reg <= 0;
+			csib_reg <= 1;
+			
+		end else begin
+			DATA_Reversed <= {ICAP_DATA[0],  ICAP_DATA[1],  ICAP_DATA[2],  ICAP_DATA[3],
+			                  ICAP_DATA[4],  ICAP_DATA[5],  ICAP_DATA[6],  ICAP_DATA[7],
+			                  ICAP_DATA[8],  ICAP_DATA[9],  ICAP_DATA[10], ICAP_DATA[11],
+			                  ICAP_DATA[12], ICAP_DATA[13], ICAP_DATA[14], ICAP_DATA[15],
+			                  ICAP_DATA[16], ICAP_DATA[17], ICAP_DATA[18], ICAP_DATA[19],
+			                  ICAP_DATA[20], ICAP_DATA[21], ICAP_DATA[22], ICAP_DATA[23],
+			                  ICAP_DATA[24], ICAP_DATA[25], ICAP_DATA[26], ICAP_DATA[27],
+			                  ICAP_DATA[28], ICAP_DATA[29], ICAP_DATA[30], ICAP_DATA[31]};
+			rdwrb_reg <= ICAP_RDWRB;
+			csib_reg  <= ICAP_CSIB;
+		end
+	end
+
+	wire [31:0] ICAP_O;
+	ICAPE2 #(
+		.DEVICE_ID(32'h3651093),       // Pre-programmed Device ID for simulation.
+		.ICAP_WIDTH("X32"),            // Input and output data width.
+		.SIM_CFG_FILE_NAME("NONE")     // Raw Bitstream (RBT) file for simulation model.
+	)
+	ICAPE2_inst (
+		.O(ICAP_O),              // 32-bit output: Configuration data output bus.
+		.CLK(clk),               // 1-bit input: Clock input.
+		.CSIB(csib_reg),         // 1-bit input: Active-Low ICAP enable.
+		.I(DATA_Reversed),       // 32-bit input: Configuration data input bus.
+		.RDWRB(rdwrb_reg)        // 1-bit input: Read/Write Select input.
+	);
+
+	assign ICAP_ERR = (ICAP_O[7:0] == 8'h1F) ? 1'b1 : 1'b0;
+
+endmodule

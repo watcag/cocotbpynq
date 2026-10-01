@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pynq-pr"
+version = "0.2.0.dev0"
+requires-python = ">=3.10"
+description = "YAML-driven Vivado DFX (partial reconfiguration) flow, swap-aware co-simulation and PYNQ runtime for Cocotb-PYNQ-PR designs"
+readme = "README.md"
+authors = [
+    { name="Emir Guevara", email="e2guevar@uwaterloo.ca" },
+    { name="Chaitanya Sharma", email="chaitanya.sharma@uwaterloo.ca" },
+    { name="Gavin Lusby", email="gdplusby@uwaterloo.ca" },
+    { name="Nachiket Kapre", email="nachiket@uwaterloo.ca" }
+]
+# license: pending decision (see README); do not publish to PyPI before it is set
+# Board-safe: the base install must stay light. pynq and numpy come with the PYNQ
+# image and are never declared; cocotbpynq (simulation) is in the "sim" extra.
+dependencies = ["pyyaml>=5.4"]
+
+[project.optional-dependencies]
+# Same release as this package; scripts/bump.py keeps the pin in sync.
+sim = ["cocotbpynq==0.2.0.dev0"]
+examples = ["pillow"]
+
+[project.urls]
+Homepage = "https://github.com/watcag/cocotbpynq"
+Issues = "https://github.com/watcag/cocotbpynq/issues"
+
+[project.scripts]
+pynq-pr = "pynq_pr.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+pynq_pr = [
+    "scripts/*.tcl",
+    "versatile/rtl/*.vhd",
+    "versatile/rtl/*.v",
+    "versatile/ip/**/*",
+    "versatile/NOTICE",
+    "rtl/*.v",
+    "constraints/*.xdc",
+]

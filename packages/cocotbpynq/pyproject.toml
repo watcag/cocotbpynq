@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cocotbpynq"
+version = "0.2.0.dev0"
+authors = [
+    { name="Gavin Lusby", email="gdplusby@uwaterloo.ca" },
+    { name="Nachiket Kapre", email="nachiket@uwaterloo.ca" },
+    { name="Chaitanya Sharma", email="chaitanya.sharma@uwaterloo.ca" },
+    { name="Emir Guevara", email="e2guevar@uwaterloo.ca" }
+]
+license = "GPL-3.0-or-later"
+readme="README.md"
+
+description = "A direct substition for PYNQ library, to seamlessly allow simulation of PL region + PS-PL interface"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "cocotb>=2.0.1,<3",
+    "pyslang>=10",
+    "pyyaml",
+    "jinja2",
+]
+
+
+[project.optional-dependencies]
+examples = ["pillow", "matplotlib"]
+test = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://github.com/watcag/cocotbpynq"
+Issues = "https://github.com/watcag/cocotbpynq/issues"
+
+[project.scripts]
+cocotbpynq-sample = "cocotbpynq.sample.cocotb_runner:main"

@@ -1,0 +1,40 @@
+project: tutorial_z1
+board: z1
+reconfiguration_method: icap
+axis_switch : true
+
+
+sources:
+  - rtl/poly_sum.v
+  - rtl/poly_sub.v
+  - rtl/poly_mult.v
+
+reconfigurable_partitions:
+  - partition_name: add
+    modules:
+      - cell_name: c_5
+        top: poly_sum
+        parameters:
+          CONST: 5
+      - cell_name: c_10
+        top: poly_sum
+        parameters:
+          CONST: 10
+
+  - partition_name: sub
+    modules:
+      - cell_name: c_3
+        top: poly_sub
+        parameters:
+          CONST: 3
+      - cell_name: c_7
+        top: poly_sub
+        parameters:
+          CONST: 7
+
+  - partition_name: mult
+    modules:
+      - cell_name: c_10
+        top: poly_mult
+        parameters:
+          CONST: 10
