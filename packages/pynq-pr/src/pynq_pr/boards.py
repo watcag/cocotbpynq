@@ -2,6 +2,7 @@ BOARDS = {
     "z1": {
         "part": "xc7z020clg400-1",
         "board_part": "",
+        "icap_primitive": "ICAPE2",  # Zynq-7000
         "frame_height": 50,
         "clock_regions": {
             "X0Y0": {"SLICE": (0,  49,  0,  49)},
@@ -18,6 +19,7 @@ BOARDS = {
     "kv260": {
         "part": "xck26-sfvc784-2LV-c",
         "board_part": "xilinx.com:kv260_som:part0:1.3",
+        "icap_primitive": "ICAPE3",  # Zynq UltraScale+
         "frame_height": 60,
         "clock_regions": {
             "X0Y0": {"SLICE": (0,  22, 0,   59)},

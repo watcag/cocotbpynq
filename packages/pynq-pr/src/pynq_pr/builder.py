@@ -28,6 +28,7 @@ def generate_tcl_config(config, board, root_dir, proj_dir, bits_dir, pblocks_xdc
     tcl_set("part_number", board["part"])
     tcl_set("board_part", board.get("board_part", ""))
     tcl_set("board_name", config["board"])
+    tcl_set("icap_primitive", board["icap_primitive"])
     tcl_set("axis_switch", "1" if config.get("axis_switch") else "0")
     tcl_set("versatile_freq", config.get("_versatile_freq", 100))
     tcl_set("data_freq", config.get("_data_freq", 100))

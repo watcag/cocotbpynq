@@ -1,4 +1,4 @@
-proc add_versatile {clk_net versatile_clk_src versatile_freq resetn_net resetn_ext gp0_intf hp1_intf hp1_aclk board_name} {
+proc add_versatile {clk_net versatile_clk_src versatile_freq resetn_net resetn_ext gp0_intf hp1_intf hp1_aclk icap_primitive} {
     # Clocking wizard: raw PS clock -> clk_out1 (versatile), clk_out2 (2x, ICAP)
     set icap_freq [expr {2 * $versatile_freq}]
     set clk_wiz [create_bd_cell -type ip -vlnv xilinx.com:ip:clk_wiz versatile_clk_wiz]
@@ -58,11 +58,7 @@ proc add_versatile {clk_net versatile_clk_src versatile_freq resetn_net resetn_e
     create_bd_cell -type module -reference Bitstream_Reader Bitstream_Reader_0
     create_bd_cell -type module -reference CDC_BRIDGE CDC_BRIDGE_0
 
-    if {$board_name eq "kv260"} {
-        set icape_ref ICAPE3_WRAPPER
-    } else {
-        set icape_ref ICAPE2_WRAPPER
-    }
+    set icape_ref ${icap_primitive}_WRAPPER
     set icape_name ${icape_ref}_0
     create_bd_cell -type module -reference $icape_ref $icape_name
 
@@ -349,7 +345,7 @@ for {set i 0} {$i < $num_rps} {incr i} {
 }
 
 if {$reconfiguration_method eq "icap"} {
-    add_versatile $clk_net $versatile_clk_src $versatile_freq $resetn_net $resetn_ext $gp0_intf $hp1_intf $hp1_aclk $board_name
+    add_versatile $clk_net $versatile_clk_src $versatile_freq $resetn_net $resetn_ext $gp0_intf $hp1_intf $hp1_aclk $icap_primitive
 } else {
     # HP1 enabled but unused in PCAP mode — connect clock for validation
     connect_bd_net $versatile_clk_src $hp1_aclk
