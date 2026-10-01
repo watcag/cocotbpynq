@@ -1,0 +1,91 @@
+version: "1.0"
+
+simulation:
+  tool: verilator
+  build_dir: build
+
+static_region:
+  name: stream_static
+  design: stream_static
+  sources:
+    - rtl/stream_static.sv
+  auto_wrap: true
+  auto_wrap_config:
+    clock_name: clk
+    reset_name: rst_n
+    reset_active_low: true
+  interfaces:
+    x:
+      type: sb
+      direction: subordinate   # DUT receives data (DMA send channel)
+      dw: 32
+      dma_instance: axi_dma_0
+      base_addr: 0x40400000
+      addr_range: 0x10000
+    y:
+      type: sb
+      direction: manager       # DUT sends data (DMA recv channel)
+      dw: 32
+      dma_instance: axi_dma_0
+
+# Two-stage reconfigurable pipeline:
+#   DMA in → rp_stage1 → rp_stage2 → DMA out
+partitions:
+  - name: rp_stage1
+    rm_module: stage1_rm
+    clock: clk
+    boundary:
+      - name: data_in
+        direction: to_rm
+        width: 32
+      - name: result
+        direction: from_rm
+        width: 32
+    initial_rm: s1_add_one
+
+  - name: rp_stage2
+    rm_module: stage2_rm
+    clock: clk
+    boundary:
+      - name: data_in
+        direction: to_rm
+        width: 32
+      - name: result
+        direction: from_rm
+        width: 32
+    initial_rm: s2_double
+
+reconfigurable_modules:
+  # Stage 1 variants
+  - name: s1_add_one
+    partition: rp_stage1
+    design: stage1_rm
+    sources: [rtl/s1_add_one.sv]
+    auto_wrap: true
+    auto_wrap_config:
+      clock_name: clk
+
+  - name: s1_double
+    partition: rp_stage1
+    design: stage1_rm
+    sources: [rtl/s1_double.sv]
+    auto_wrap: true
+    auto_wrap_config:
+      clock_name: clk
+
+  # Stage 2 variants
+  - name: s2_add_one
+    partition: rp_stage2
+    design: stage2_rm
+    sources: [rtl/s2_add_one.sv]
+    auto_wrap: true
+    auto_wrap_config:
+      clock_name: clk
+
+  - name: s2_double
+    partition: rp_stage2
+    design: stage2_rm
+    sources: [rtl/s2_double.sv]
+    auto_wrap: true
+    auto_wrap_config:
+      clock_name: clk

@@ -1,0 +1,84 @@
+#ifndef SIGNAL_ACCESS_H
+#define SIGNAL_ACCESS_H
+
+#include <cstdint>
+#include <verilated.h>
+#include "dpi_shm_channel.h"
+
+#include "V{{ static_info.design_name }}.h"
+
+// Global partition bases (defined in static_driver.cpp)
+extern void* g_partition_bases[];
+
+inline uint64_t read_static_port(V{{ static_info.design_name }}* model, int port_idx) {
+    switch (port_idx) {
+{% for port in static_info.ports %}
+        case {{ loop.index0 }}: return static_cast<uint64_t>(model->{{ port.name }});
+{% endfor %}
+        default: return 0;
+    }
+}
+
+inline void write_static_port(V{{ static_info.design_name }}* model, int port_idx, uint64_t value) {
+    switch (port_idx) {
+{% for port in static_info.ports %}
+{% if port.direction == 'input' %}
+        case {{ loop.index0 }}: model->{{ port.name }} = static_cast<{{ cpp_unsigned_type(port.width|default(32)) }}>(value); break;
+{% endif %}
+{% endfor %}
+        default: break;
+    }
+}
+
+{% for part in partitions %}
+inline uint64_t read_{{ part.name }}_port(int port_idx) {
+    void* base = g_partition_bases[{{ part.index }}];
+    ShmPartitionHeader* hdr = shm_header(base);
+    switch (port_idx) {
+{% set ns = namespace(slot=0) %}
+{% for port in part.to_rm_ports %}
+{% set nc = num_chunks(port.width|default(32)) %}
+{% for c in range(nc) %}
+        case {{ ns.slot }}: {
+            ShmPortOverride* ovr = shm_to_rm_override(base, {{ ns.slot }});
+            if (shm_load32(&ovr->active)) return shm_load64_relaxed(&ovr->value);
+            return shm_load64_relaxed(&shm_to_rm_inbox(base, {{ ns.slot }})->data);
+        }
+{% set ns.slot = ns.slot + 1 %}
+{% endfor %}
+{% endfor %}
+{% set ns2 = namespace(from_slot=0) %}
+{% for port in part.from_rm_ports %}
+{% set nc = num_chunks(port.width|default(32)) %}
+{% for c in range(nc) %}
+        case {{ ns.slot }}: return shm_load64_relaxed(&shm_from_rm_outbox(base, hdr->num_to_rm, {{ ns2.from_slot }})->data);
+{% set ns.slot = ns.slot + 1 %}
+{% set ns2.from_slot = ns2.from_slot + 1 %}
+{% endfor %}
+{% endfor %}
+        default: return 0;
+    }
+}
+
+inline void write_{{ part.name }}_port(int port_idx, uint64_t value) {
+    void* base = g_partition_bases[{{ part.index }}];
+    switch (port_idx) {
+{% set ns3 = namespace(slot=0) %}
+{% for port in part.to_rm_ports %}
+{% set nc = num_chunks(port.width|default(32)) %}
+{% for c in range(nc) %}
+        case {{ ns3.slot }}: {
+            ShmPortOverride* ovr = shm_to_rm_override(base, {{ ns3.slot }});
+            shm_store64_relaxed(&ovr->value, value);
+            shm_store32(&ovr->active, 1);
+            break;
+        }
+{% set ns3.slot = ns3.slot + 1 %}
+{% endfor %}
+{% endfor %}
+        default: break;
+    }
+}
+
+{% endfor %}
+#endif // SIGNAL_ACCESS_H

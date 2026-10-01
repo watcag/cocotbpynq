@@ -1,0 +1,98 @@
+#ifndef DPI_SHM_CHANNEL_H
+#define DPI_SHM_CHANNEL_H
+
+#include <cstdint>
+#include <cstddef>
+
+#define SHM_MAGIC   0x50525348  // "PRSH"
+#define SHM_VERSION 1
+
+// Port data slot (one cache line = 64 bytes)
+struct alignas(64) ShmPort {
+    uint64_t data;
+    uint32_t valid;
+};
+static_assert(sizeof(ShmPort) == 64);
+
+// Port override slot for Python writes (one cache line)
+struct alignas(64) ShmPortOverride {
+    uint64_t value;
+    uint32_t active;
+};
+static_assert(sizeof(ShmPortOverride) == 64);
+
+// Partition shared memory header (one cache line)
+struct alignas(64) ShmPartitionHeader {
+    uint32_t magic;          // SHM_MAGIC
+    uint32_t version;        // SHM_VERSION
+    uint32_t num_to_rm;
+    uint32_t num_from_rm;
+    uint32_t initialized;    // Set by creator
+    uint32_t quit;            // Static sets to signal RM exit
+    uint32_t rm_ready;        // New RM sets when ready
+};
+static_assert(sizeof(ShmPartitionHeader) == 64);
+
+// Memory layout per partition shm file:
+//   [0]              ShmPartitionHeader    (64 bytes)
+//   [64]             to_rm[0].outbox       (64 bytes)
+//   [128]            to_rm[0].inbox        (64 bytes)
+//   [192]            to_rm[0].override     (64 bytes)
+//   [256]            to_rm[1].outbox       ...
+//   ...              (T ports * 192 bytes)
+//   [64 + T*192]     from_rm[0].outbox     (64 bytes)
+//   [64 + T*192+64]  from_rm[0].inbox      (64 bytes)
+//   ...              (F ports * 128 bytes)
+//   Total: 64 + T*192 + F*128 bytes, page-aligned
+
+// T_slots and F_slots are slot counts (not port counts).
+// A port of width W occupies ceil(W/64) slots.
+static inline size_t shm_partition_size(uint32_t T_slots, uint32_t F_slots) {
+    size_t raw = 64 + (size_t)T_slots * 192 + (size_t)F_slots * 128;
+    return (raw + 4095) & ~(size_t)4095;  // round to page
+}
+
+// Accessors — all return pointers into the mmap'd region
+static inline ShmPartitionHeader* shm_header(void* base) {
+    return (ShmPartitionHeader*)base;
+}
+
+static inline ShmPort* shm_to_rm_outbox(void* base, int idx) {
+    return (ShmPort*)((char*)base + 64 + idx * 192);
+}
+static inline ShmPort* shm_to_rm_inbox(void* base, int idx) {
+    return (ShmPort*)((char*)base + 64 + idx * 192 + 64);
+}
+static inline ShmPortOverride* shm_to_rm_override(void* base, int idx) {
+    return (ShmPortOverride*)((char*)base + 64 + idx * 192 + 128);
+}
+
+static inline ShmPort* shm_from_rm_outbox(void* base, uint32_t T, int idx) {
+    return (ShmPort*)((char*)base + 64 + T * 192 + idx * 128);
+}
+static inline ShmPort* shm_from_rm_inbox(void* base, uint32_t T, int idx) {
+    return (ShmPort*)((char*)base + 64 + T * 192 + idx * 128 + 64);
+}
+
+// Atomic helpers for cross-process shared memory
+static inline uint32_t shm_load32(volatile uint32_t* p) {
+    return __atomic_load_n(p, __ATOMIC_ACQUIRE);
+}
+static inline void shm_store32(volatile uint32_t* p, uint32_t v) {
+    __atomic_store_n(p, v, __ATOMIC_RELEASE);
+}
+static inline uint32_t shm_load32_relaxed(volatile uint32_t* p) {
+    return __atomic_load_n(p, __ATOMIC_RELAXED);
+}
+static inline void shm_store32_relaxed(volatile uint32_t* p, uint32_t v) {
+    __atomic_store_n(p, v, __ATOMIC_RELAXED);
+}
+
+static inline uint64_t shm_load64_relaxed(volatile uint64_t* p) {
+    return __atomic_load_n(p, __ATOMIC_RELAXED);
+}
+static inline void shm_store64_relaxed(volatile uint64_t* p, uint64_t v) {
+    __atomic_store_n(p, v, __ATOMIC_RELAXED);
+}
+
+#endif // DPI_SHM_CHANNEL_H

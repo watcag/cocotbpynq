@@ -20,6 +20,7 @@ from .dut import CocotbPynqBusInterface, CocotbPynqDut
 from cocotb.triggers import Event, RisingEdge, ReadOnly
 import numpy as np
 from threading import Lock
+from cocotb.task import resume
 
 class DMA:
     def __init__(self, cp_businterfaces, axi_dma_el):
@@ -56,7 +57,7 @@ class DMA_Channel():
             self.cpbus.TVALID.value = 0b0
         else:
             self.cpbus.TREADY.value = 0b0
-    @cocotb.function
+    @resume
     async def wait(self):
         await self.is_idle.wait()
         self.idle_lock.release()

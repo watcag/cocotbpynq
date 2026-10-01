@@ -1,0 +1,56 @@
+version: "1.0"
+
+simulation:
+  tool: verilator
+  build_dir: build
+
+static_region:
+  name: compute_static
+  design: compute_static
+  sources:
+    - rtl/compute_static.sv
+  auto_wrap: true
+  auto_wrap_config:
+    clock_name: clk
+    reset_name: rst_n
+    reset_active_low: true
+  # AXI-Lite slave — exposed to cocotbpynq as MMIO
+  # port names follow the HwhGenerator convention: {name}_{signal}
+  interfaces:
+    ctrl:
+      type: axil
+      direction: subordinate
+      dw: 32
+      aw: 32
+      base_addr: 0x43C00000
+      addr_range: 0x10000
+
+partitions:
+  - name: rp_compute
+    rm_module: compute_rm
+    clock: clk
+    boundary:
+      - name: data_in
+        direction: to_rm
+        width: 32
+      - name: result
+        direction: from_rm
+        width: 32
+    initial_rm: adder_rm
+
+reconfigurable_modules:
+  - name: adder_rm
+    partition: rp_compute
+    design: compute_rm
+    sources: [rtl/adder_rm.sv]
+    auto_wrap: true
+    auto_wrap_config:
+      clock_name: clk
+
+  - name: inverter_rm
+    partition: rp_compute
+    design: compute_rm
+    sources: [rtl/inverter_rm.sv]
+    auto_wrap: true
+    auto_wrap_config:
+      clock_name: clk

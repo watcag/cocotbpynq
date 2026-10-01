@@ -15,7 +15,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from cocotb import test, external
+from cocotb import test
+from cocotb.task import bridge
 from os import environ
 if("COCOTB_SYS_ARGV" in environ):
     argv=environ["COCOTB_SYS_ARGV"].split()
@@ -32,7 +33,7 @@ def synctest(test_func):
     be wrapped with cocotbpynq.synctest when used for simulation"""
     qualname = test_func.__qualname__
     module = test_func.__module__
-    test_func = external(test_func) # Replace with bridge/continue in cocotb 2.X
+    test_func = bridge(test_func)
     async def async_test_func(dut):
         await test_func(dut)
     cocotbtest = test(async_test_func)

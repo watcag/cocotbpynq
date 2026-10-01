@@ -1,0 +1,121 @@
+version: "1.0"
+
+simulation:
+  tool: verilator
+  build_dir: build
+
+static_region:
+  name: dual_static
+  design: dual_static
+  sources:
+    - rtl/dual_static.sv
+  auto_wrap: true
+  auto_wrap_config:
+    clock_name: clk
+    reset_name: rst_n
+    reset_active_low: true
+  interfaces:
+    # DMA0 ↔ partition 0
+    x0:
+      type: sb
+      direction: subordinate
+      dw: 32
+      dma_instance: axi_dma_0
+      base_addr: 0x40400000
+      addr_range: 0x10000
+    y0:
+      type: sb
+      direction: manager
+      dw: 32
+      dma_instance: axi_dma_0
+
+    # DMA1 ↔ partition 1
+    x1:
+      type: sb
+      direction: subordinate
+      dw: 32
+      dma_instance: axi_dma_1
+      base_addr: 0x40410000
+      addr_range: 0x10000
+    y1:
+      type: sb
+      direction: manager
+      dw: 32
+      dma_instance: axi_dma_1
+
+# Two independently-addressable reconfigurable partitions
+partitions:
+  - name: rp0
+    rm_module: rp0_rm
+    clock: clk
+    boundary:
+      - name: data_in
+        direction: to_rm
+        width: 32
+      - name: result
+        direction: from_rm
+        width: 32
+    initial_rm: rp0_add_one
+
+  - name: rp1
+    rm_module: rp1_rm
+    clock: clk
+    boundary:
+      - name: data_in
+        direction: to_rm
+        width: 32
+      - name: result
+        direction: from_rm
+        width: 32
+    initial_rm: rp1_add_ten
+
+reconfigurable_modules:
+  # Partition 0: 3 variants
+  - name: rp0_add_one
+    partition: rp0
+    design: rp0_rm
+    sources: [rtl/rp0_add_one.sv]
+    auto_wrap: true
+    auto_wrap_config:
+      clock_name: clk
+
+  - name: rp0_double
+    partition: rp0
+    design: rp0_rm
+    sources: [rtl/rp0_double.sv]
+    auto_wrap: true
+    auto_wrap_config:
+      clock_name: clk
+
+  - name: rp0_negate
+    partition: rp0
+    design: rp0_rm
+    sources: [rtl/rp0_negate.sv]
+    auto_wrap: true
+    auto_wrap_config:
+      clock_name: clk
+
+  # Partition 1: 3 variants
+  - name: rp1_add_ten
+    partition: rp1
+    design: rp1_rm
+    sources: [rtl/rp1_add_ten.sv]
+    auto_wrap: true
+    auto_wrap_config:
+      clock_name: clk
+
+  - name: rp1_triple
+    partition: rp1
+    design: rp1_rm
+    sources: [rtl/rp1_triple.sv]
+    auto_wrap: true
+    auto_wrap_config:
+      clock_name: clk
+
+  - name: rp1_square
+    partition: rp1
+    design: rp1_rm
+    sources: [rtl/rp1_square.sv]
+    auto_wrap: true
+    auto_wrap_config:
+      clock_name: clk

@@ -23,9 +23,10 @@ from xml.etree import ElementTree
 from cocotb.handle import SimHandleBase
 
 class CocotbPynqDut:
-    def __init__(self, dut: SimHandleBase, dut_module_el, reset_on_init=True):
+    def __init__(self, dut: SimHandleBase, dut_module_el, reset_on_init=True, skip_modtype_check=False):
         self.dut = dut
-        if(str(dut) != dut_module_el.get("MODTYPE")):
+        dut_module_name, hwh_module_type = cocotb.top._name, dut_module_el.get("MODTYPE")
+        if(not skip_modtype_check and dut_module_name != hwh_module_type):
             raise ValueError("Given module is not the same module type as dut")
         self.bus_interfaces = {}
         for bus_interface_el in dut_module_el.findall("./BUSINTERFACES/BUSINTERFACE"):
@@ -42,10 +43,10 @@ class CocotbPynqDut:
         self.rst = getattr(self.dut, rst_el.get("NAME"))
         self.rst_active_low = (rst_el.get("POLARITY") == "ACTIVE_LOW")
         # Start common signals
-        cocotb.start_soon(Clock(dut.clk, 1000, 'step').start())
+        cocotb.start_soon(Clock(self.clk, 1000, 'step').start())
         if(reset_on_init):
-            # Reset dut for 3 cycles, then wait 4 cycles before allowing anyone to touch dut
-            cocotb.start_soon(self.reset_dut(3, 4))
+            # Reset dut for 3 cycles, then wait 1 cycle before allowing anyone to touch dut
+            cocotb.start_soon(self.reset_dut(3, 1))
 
         self.instance_name = dut_module_el.get("INSTANCE")
 
