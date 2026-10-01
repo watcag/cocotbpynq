@@ -6,25 +6,28 @@ It also contains a swap-aware partial-reconfiguration (PR) co-simulation engine,
 The API is not yet stable (0.x releases): minor versions may change it.
 
 ## Installation
-cocotbpynq runs on the host (Linux or macOS), not on the PYNQ board. It needs Verilator 5.036 or newer, which Linux distribution packages (e.g. `apt`) do not provide yet. The simplest route is the Verilator wheel from PyPI, which cocotbpynq finds automatically:
+cocotbpynq runs on the host (Linux or macOS), not on the PYNQ board. Releases are published on GitHub: install a release tag (see [Releases](https://github.com/watcag/cocotbpynq/releases) for the latest).
 
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
-pip install cocotbpynq verilator
+pip install "cocotbpynq @ git+https://github.com/watcag/cocotbpynq@v0.1.0" verilator
 python -m cocotbpynq.sample          # should end with TESTS=1 PASS=1 FAIL=0
 ```
 
-Other ways to get Verilator: `brew install verilator` (macOS) or the [oss-cad-suite](https://github.com/YosysHQ/oss-cad-suite-build) tarball.
+Note: the `cocotbpynq` package on PyPI is still the old 0.0.3 (cocotb 1.x) and does not work with cocotb 2.x; do not `pip install cocotbpynq` from PyPI until a newer release appears there.
 
-To install the latest version from this repository instead:
+cocotbpynq needs Verilator 5.036 or newer, which Linux distribution packages (e.g. `apt`) do not provide yet. The `verilator` wheel from PyPI (installed above) works and cocotbpynq finds it automatically. Other options: `brew install verilator` (macOS) or the [oss-cad-suite](https://github.com/YosysHQ/oss-cad-suite-build) tarball.
+
+To work from a clone (e.g. to run the examples):
 
 ```sh
 git clone https://github.com/watcag/cocotbpynq.git
 cd cocotbpynq
-python3 -m pip install ".[examples]"
+git checkout v0.1.0                  # or stay on main for the latest development state
+python3 -m pip install ".[examples]" verilator
 ```
 
-Update with `pip install -U cocotbpynq`.
+To update, run the same `pip install` command with the newer release tag.
 
 ### Requirements
 | | Supported | Tested |
@@ -71,7 +74,7 @@ For the full Vivado DFX flow (block design, floorplanning, partial bitstreams, b
 | Version | Paper | Install |
 |---|---|---|
 | `0.0.3` | FPL 2025 (Cocotb-Pynq) | `pip install "cocotbpynq==0.0.3" "cocotb<2"`. The "Write Error occured. Response: 0b0" messages it prints are a known cosmetic bug, fixed in 0.1.0. |
-| `0.1.0` | FPL 2026 (Cocotb-PYNQ-PR), with pynq-pr `0.1.1` | `pip install "cocotbpynq==0.1.0"` |
+| `0.1.0` | FPL 2026 (Cocotb-PYNQ-PR), with pynq-pr `0.1.1` | `pip install "cocotbpynq @ git+https://github.com/watcag/cocotbpynq@v0.1.0"` |
 
 This repository contains the tools and examples. The papers' benchmark harnesses, raw measurements and hardware designs are not included.
 
