@@ -39,6 +39,10 @@ jobs:
           assert not extra, f"board install pulled in {extra}"
           print("board install:", sorted(names))
           PY
+      - name: Board definitions are complete and floorplan (against the installed wheel)
+        run: |
+          /tmp/board/bin/pip install pytest
+          /tmp/board/bin/python -m pytest -q tests
       - uses: actions/upload-artifact@v4
         with: {name: dist, path: dist/}
 
@@ -68,6 +72,13 @@ jobs:
           pip list | grep -iE "cocotb|pynq|pyslang|verilator"
       - name: Sample
         run: mkdir -p /tmp/sample && cd /tmp/sample && timeout 300 python -m cocotbpynq.sample
+      - name: A failing simulation test fails the run (exit code is propagated)
+        if: matrix.python == '3.10'
+        run: |
+          cp -r examples/cocotbpynq/axi_pr_example /tmp/failing && cd /tmp/failing
+          sed -i '0,/^    assert /s//    assert False, "deliberate failure"; assert /' test_pynq.py
+          grep -q "deliberate failure" test_pynq.py
+          if timeout 300 python run.py; then echo "a failing test exited with 0"; exit 1; fi
       - name: cocotbpynq PR examples
         run: |
           set -e
