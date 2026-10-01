@@ -1,0 +1,205 @@
+version: "1.0"
+
+simulation:
+  tool: verilator
+  build_dir: build
+
+static_region:
+  name: video_pipeline_static
+  design: video_pipeline_static
+  sources:
+    - rtl/video_pipeline_static.sv
+    - rtl/axis_switch.sv
+  auto_wrap: true
+  auto_wrap_config:
+    clock_name: clk
+    reset_name: rst_n
+    reset_active_low: true
+  interfaces:
+    switch_ctrl:
+      type: axil
+      direction: subordinate
+      dw: 32
+      base_addr: 0x44A00000
+      addr_range: 0x10000
+
+    # DMA0 ↔ rp_color
+    x0: { type: sb, direction: subordinate, dw: 32, dma_instance: axi_dma_0,
+          base_addr: 0x40400000, addr_range: 0x10000 }
+    y0: { type: sb, direction: manager, dw: 32, dma_instance: axi_dma_0 }
+    # DMA1 ↔ rp_spatial
+    x1: { type: sb, direction: subordinate, dw: 32, dma_instance: axi_dma_1,
+          base_addr: 0x40410000, addr_range: 0x10000 }
+    y1: { type: sb, direction: manager, dw: 32, dma_instance: axi_dma_1 }
+    # DMA2 ↔ rp_tone
+    x2: { type: sb, direction: subordinate, dw: 32, dma_instance: axi_dma_2,
+          base_addr: 0x40420000, addr_range: 0x10000 }
+    y2: { type: sb, direction: manager, dw: 32, dma_instance: axi_dma_2 }
+    # DMA3 ↔ rp_palette
+    x3: { type: sb, direction: subordinate, dw: 32, dma_instance: axi_dma_3,
+          base_addr: 0x40430000, addr_range: 0x10000 }
+    y3: { type: sb, direction: manager, dw: 32, dma_instance: axi_dma_3 }
+    # DMA4 ↔ rp_stylize
+    x4: { type: sb, direction: subordinate, dw: 32, dma_instance: axi_dma_4,
+          base_addr: 0x40440000, addr_range: 0x10000 }
+    y4: { type: sb, direction: manager, dw: 32, dma_instance: axi_dma_4 }
+    # DMA5 ↔ rp_finalize
+    x5: { type: sb, direction: subordinate, dw: 32, dma_instance: axi_dma_5,
+          base_addr: 0x40450000, addr_range: 0x10000 }
+    y5: { type: sb, direction: manager, dw: 32, dma_instance: axi_dma_5 }
+
+# Each partition exposes the full AXI-Stream slave + master boundary so the
+# DPI bridge marshals tdata/tvalid/tready/tlast every cycle. This is what
+# lets the RMs advance internal state exactly once per pixel
+# (per accepted AXI-Stream handshake), required for the spatial 3x3
+# line-buffered filters and the per-pixel state machines.
+partitions:
+  - name: rp_color
+    rm_module: color_rm
+    clock: clk
+    boundary:
+      - { name: s_axis_tdata,  direction: to_rm,   width: 32 }
+      - { name: s_axis_tvalid, direction: to_rm,   width: 1 }
+      - { name: s_axis_tlast,  direction: to_rm,   width: 1 }
+      - { name: m_axis_tready, direction: to_rm,   width: 1 }
+      - { name: s_axis_tready, direction: from_rm, width: 1 }
+      - { name: m_axis_tdata,  direction: from_rm, width: 32 }
+      - { name: m_axis_tvalid, direction: from_rm, width: 1 }
+      - { name: m_axis_tlast,  direction: from_rm, width: 1 }
+    initial_rm: color_identity
+
+  - name: rp_spatial
+    rm_module: spatial_rm
+    clock: clk
+    boundary:
+      - { name: s_axis_tdata,  direction: to_rm,   width: 32 }
+      - { name: s_axis_tvalid, direction: to_rm,   width: 1 }
+      - { name: s_axis_tlast,  direction: to_rm,   width: 1 }
+      - { name: m_axis_tready, direction: to_rm,   width: 1 }
+      - { name: s_axis_tready, direction: from_rm, width: 1 }
+      - { name: m_axis_tdata,  direction: from_rm, width: 32 }
+      - { name: m_axis_tvalid, direction: from_rm, width: 1 }
+      - { name: m_axis_tlast,  direction: from_rm, width: 1 }
+    initial_rm: spatial_identity
+
+  - name: rp_tone
+    rm_module: tone_rm
+    clock: clk
+    boundary:
+      - { name: s_axis_tdata,  direction: to_rm,   width: 32 }
+      - { name: s_axis_tvalid, direction: to_rm,   width: 1 }
+      - { name: s_axis_tlast,  direction: to_rm,   width: 1 }
+      - { name: m_axis_tready, direction: to_rm,   width: 1 }
+      - { name: s_axis_tready, direction: from_rm, width: 1 }
+      - { name: m_axis_tdata,  direction: from_rm, width: 32 }
+      - { name: m_axis_tvalid, direction: from_rm, width: 1 }
+      - { name: m_axis_tlast,  direction: from_rm, width: 1 }
+    initial_rm: tone_identity
+
+  - name: rp_palette
+    rm_module: palette_rm
+    clock: clk
+    boundary:
+      - { name: s_axis_tdata,  direction: to_rm,   width: 32 }
+      - { name: s_axis_tvalid, direction: to_rm,   width: 1 }
+      - { name: s_axis_tlast,  direction: to_rm,   width: 1 }
+      - { name: m_axis_tready, direction: to_rm,   width: 1 }
+      - { name: s_axis_tready, direction: from_rm, width: 1 }
+      - { name: m_axis_tdata,  direction: from_rm, width: 32 }
+      - { name: m_axis_tvalid, direction: from_rm, width: 1 }
+      - { name: m_axis_tlast,  direction: from_rm, width: 1 }
+    initial_rm: palette_identity
+
+  - name: rp_stylize
+    rm_module: stylize_rm
+    clock: clk
+    boundary:
+      - { name: s_axis_tdata,  direction: to_rm,   width: 32 }
+      - { name: s_axis_tvalid, direction: to_rm,   width: 1 }
+      - { name: s_axis_tlast,  direction: to_rm,   width: 1 }
+      - { name: m_axis_tready, direction: to_rm,   width: 1 }
+      - { name: s_axis_tready, direction: from_rm, width: 1 }
+      - { name: m_axis_tdata,  direction: from_rm, width: 32 }
+      - { name: m_axis_tvalid, direction: from_rm, width: 1 }
+      - { name: m_axis_tlast,  direction: from_rm, width: 1 }
+    initial_rm: stylize_identity
+
+  - name: rp_finalize
+    rm_module: finalize_rm
+    clock: clk
+    boundary:
+      - { name: s_axis_tdata,  direction: to_rm,   width: 32 }
+      - { name: s_axis_tvalid, direction: to_rm,   width: 1 }
+      - { name: s_axis_tlast,  direction: to_rm,   width: 1 }
+      - { name: m_axis_tready, direction: to_rm,   width: 1 }
+      - { name: s_axis_tready, direction: from_rm, width: 1 }
+      - { name: m_axis_tdata,  direction: from_rm, width: 32 }
+      - { name: m_axis_tvalid, direction: from_rm, width: 1 }
+      - { name: m_axis_tlast,  direction: from_rm, width: 1 }
+    initial_rm: finalize_identity
+
+reconfigurable_modules:
+  # rp_color
+  - { name: color_identity,  partition: rp_color,    design: color_rm,
+      sources: [rtl/color_identity.sv],   auto_wrap: true, auto_wrap_config: {clock_name: clk} }
+  - { name: color_grayscale, partition: rp_color,    design: color_rm,
+      sources: [rtl/color_grayscale.sv],  auto_wrap: true, auto_wrap_config: {clock_name: clk} }
+  - { name: color_sepia,     partition: rp_color,    design: color_rm,
+      sources: [rtl/color_sepia.sv],      auto_wrap: true, auto_wrap_config: {clock_name: clk} }
+  - { name: color_invert,    partition: rp_color,    design: color_rm,
+      sources: [rtl/color_invert.sv],     auto_wrap: true, auto_wrap_config: {clock_name: clk} }
+
+  # rp_spatial — image width W is a Verilog parameter passed in here
+  - { name: spatial_identity,   partition: rp_spatial,  design: spatial_rm,
+      sources: [rtl/spatial_identity.sv],    auto_wrap: true, auto_wrap_config: {clock_name: clk} }
+  - { name: spatial_blur33,     partition: rp_spatial,  design: spatial_rm,
+      sources: [rtl/spatial_blur33.sv],      parameters: {W: 128},
+      auto_wrap: true, auto_wrap_config: {clock_name: clk} }
+  - { name: spatial_sharpen33,  partition: rp_spatial,  design: spatial_rm,
+      sources: [rtl/spatial_sharpen33.sv],   parameters: {W: 128},
+      auto_wrap: true, auto_wrap_config: {clock_name: clk} }
+  - { name: spatial_edge33,     partition: rp_spatial,  design: spatial_rm,
+      sources: [rtl/spatial_edge33.sv],      parameters: {W: 128},
+      auto_wrap: true, auto_wrap_config: {clock_name: clk} }
+
+  # rp_tone
+  - { name: tone_identity,   partition: rp_tone,     design: tone_rm,
+      sources: [rtl/tone_identity.sv],   auto_wrap: true, auto_wrap_config: {clock_name: clk} }
+  - { name: tone_brighten,   partition: rp_tone,     design: tone_rm,
+      sources: [rtl/tone_brighten.sv],   auto_wrap: true, auto_wrap_config: {clock_name: clk} }
+  - { name: tone_darken,     partition: rp_tone,     design: tone_rm,
+      sources: [rtl/tone_darken.sv],     auto_wrap: true, auto_wrap_config: {clock_name: clk} }
+  - { name: tone_threshold,  partition: rp_tone,     design: tone_rm,
+      sources: [rtl/tone_threshold.sv],  auto_wrap: true, auto_wrap_config: {clock_name: clk} }
+
+  # rp_palette
+  - { name: palette_identity,   partition: rp_palette,  design: palette_rm,
+      sources: [rtl/palette_identity.sv],   auto_wrap: true, auto_wrap_config: {clock_name: clk} }
+  - { name: palette_red_only,   partition: rp_palette,  design: palette_rm,
+      sources: [rtl/palette_red_only.sv],   auto_wrap: true, auto_wrap_config: {clock_name: clk} }
+  - { name: palette_bw_dither,  partition: rp_palette,  design: palette_rm,
+      sources: [rtl/palette_bw_dither.sv],  auto_wrap: true, auto_wrap_config: {clock_name: clk} }
+  - { name: palette_retro_4bit, partition: rp_palette,  design: palette_rm,
+      sources: [rtl/palette_retro_4bit.sv], auto_wrap: true, auto_wrap_config: {clock_name: clk} }
+
+  # rp_stylize
+  - { name: stylize_identity,   partition: rp_stylize,  design: stylize_rm,
+      sources: [rtl/stylize_identity.sv],   auto_wrap: true, auto_wrap_config: {clock_name: clk} }
+  - { name: stylize_posterize,  partition: rp_stylize,  design: stylize_rm,
+      sources: [rtl/stylize_posterize.sv],  auto_wrap: true, auto_wrap_config: {clock_name: clk} }
+  - { name: stylize_pixelate,   partition: rp_stylize,  design: stylize_rm,
+      sources: [rtl/stylize_pixelate.sv],   parameters: {W: 128},
+      auto_wrap: true, auto_wrap_config: {clock_name: clk} }
+  - { name: stylize_vignette,   partition: rp_stylize,  design: stylize_rm,
+      sources: [rtl/stylize_vignette.sv],   parameters: {W: 128},
+      auto_wrap: true, auto_wrap_config: {clock_name: clk} }
+
+  # rp_finalize
+  - { name: finalize_identity, partition: rp_finalize, design: finalize_rm,
+      sources: [rtl/finalize_identity.sv], auto_wrap: true, auto_wrap_config: {clock_name: clk} }
+  - { name: finalize_clamp_tv, partition: rp_finalize, design: finalize_rm,
+      sources: [rtl/finalize_clamp_tv.sv], auto_wrap: true, auto_wrap_config: {clock_name: clk} }
+  - { name: finalize_gain_1p5x, partition: rp_finalize, design: finalize_rm,
+      sources: [rtl/finalize_gain_1p5x.sv], auto_wrap: true, auto_wrap_config: {clock_name: clk} }
+  - { name: finalize_gamma_lut, partition: rp_finalize, design: finalize_rm,
+      sources: [rtl/finalize_gamma_lut.sv], auto_wrap: true, auto_wrap_config: {clock_name: clk} }

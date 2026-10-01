@@ -19,6 +19,7 @@ import cocotb
 from .dut import CocotbPynqDut
 import numpy as np
 from cocotb.triggers import RisingEdge, ReadOnly
+from cocotb.task import resume
 
 class MMIO():
     """
@@ -58,7 +59,8 @@ class MMIO():
         self.cpbus.BREADY.value = 0b0
         self.cpbus.RREADY.value = 0b0
         self.cpbus.WVALID.value = 0b0
-    @cocotb.function
+
+    @resume
     async def read(self, offset=0, length=4, word_order="little"):
         """The method to read data from MMIO.
 
@@ -111,7 +113,8 @@ class MMIO():
                 return (lsb << 32) + int(await self.single_read_axi_lite(offset + 4))
         else:
             return lsb & ((2 ** (8 * length)) - 1)   
-    @cocotb.function
+
+    @resume
     async def write(self, offset, data):
         """The method to write data to MMIO.
 
@@ -203,7 +206,7 @@ class MMIO():
         write_resp = self.cpbus.BRESP.value
         await RisingEdge(self.cpdut.clk)
         self.cpbus.BREADY.value = 0b0
-        if (write_resp == 0b00):
+        if (write_resp != 0b00):
             print(f"Write Error occured. Response: {bin(write_resp)}")
 
     async def single_read_axi_lite(self, offset):
@@ -243,6 +246,6 @@ class MMIO():
         read_resp = self.cpbus.RRESP.value
         await RisingEdge(self.cpdut.clk)
         self.cpbus.RREADY.value = 0b0
-        if (read_resp == 0b00):
+        if (read_resp != 0b00):
             print(f"Read Error occured: {bin(read_resp)}")
         return read_data

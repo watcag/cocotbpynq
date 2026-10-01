@@ -8,6 +8,15 @@ sim_build/
 *vivado.jou
 *vivado.log
 build/
+dist/
 */build/*
 **/sample/*.vcd
 **/sample/*.xml
+**/**/results.xml
+**/.DS_Store
+uv.lock
+
+# Generated outputs — regenerable from source, kept out of history
+**/out/
+**/dump.vcd
+**/merged.vcd

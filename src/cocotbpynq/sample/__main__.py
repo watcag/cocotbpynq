@@ -1,12 +1,17 @@
+import shutil
+import sys
+from pathlib import Path
+
 
 def main():
-    import subprocess
-    has_sim_build = "sim_build" in subprocess.run(["ls", "-d", "./sim_build"], capture_output=True, text=True).stdout
+    has_sim_build = Path("sim_build").is_dir()
 
-    import cocotbpynq.sample.cocotb_runner
+    from cocotbpynq.sample.cocotb_runner import main as run
+    rc = run()
 
     if not has_sim_build: # Don't delete sim_build dir if it was pre-existing
-        subprocess.run(["rm", "-rf", "./sim_build"])
+        shutil.rmtree("sim_build", ignore_errors=True)
+    return rc
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

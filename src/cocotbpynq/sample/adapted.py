@@ -1,7 +1,8 @@
 import numpy as np
 import sys
+import os
 
-COCOTB_IS_RUNNING = (len(sys.argv) > 0) and (sys.argv[0] == "cocotb")
+COCOTB_IS_RUNNING = "COCOTB_SYS_ARGV" in os.environ
 
 if (not COCOTB_IS_RUNNING):
     from pynq import Overlay

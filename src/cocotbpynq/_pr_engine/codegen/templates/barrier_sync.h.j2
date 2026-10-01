@@ -1,0 +1,31 @@
+#ifndef BARRIER_SYNC_H
+#define BARRIER_SYNC_H
+
+#include <cstdint>
+
+// Shared memory barrier layout (matches Python CycleBarrier)
+// Each field on its own cache line to avoid false sharing.
+struct ShmBarrier {
+    alignas(64) volatile uint64_t cycle_count;   // offset 0
+    alignas(64) volatile uint32_t count;         // offset 64
+    alignas(64) volatile uint32_t num_processes; // offset 128
+    alignas(64) volatile uint32_t sense;         // offset 192
+    alignas(64) volatile uint32_t initialized;   // offset 256
+};
+
+// Sense-reversing barrier wait.
+// Each process keeps a local_sense variable (init from barrier->sense).
+static inline void barrier_wait(ShmBarrier* b, uint32_t* local_sense) {
+    *local_sense = 1 - *local_sense;
+    uint32_t arrived = __atomic_add_fetch(&b->count, 1, __ATOMIC_ACQ_REL);
+    if (arrived == __atomic_load_n(&b->num_processes, __ATOMIC_ACQUIRE)) {
+        __atomic_store_n(&b->count, 0, __ATOMIC_RELAXED);
+        __atomic_store_n(&b->sense, *local_sense, __ATOMIC_RELEASE);
+    } else {
+        while (__atomic_load_n(&b->sense, __ATOMIC_ACQUIRE) != *local_sense) {
+            // spin
+        }
+    }
+}
+
+#endif // BARRIER_SYNC_H

@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+message: "If you use cocotbpynq, please cite the paper below."
+title: cocotbpynq
+repository-code: https://github.com/watcag/cocotbpynq
+license: GPL-3.0-or-later
+authors:
+  - {family-names: Lusby, given-names: Gavin}
+  - {family-names: Sharma, given-names: Chaitanya}
+  - {family-names: Guevara, given-names: Emir}
+  - {family-names: Kapre, given-names: Nachiket}
+preferred-citation:
+  type: conference-paper
+  title: "Cocotb-Pynq: Co-simulating Python+RTL Applications Targeting Pynq Platforms with Cocotb"
+  authors:
+    - {family-names: Lusby, given-names: Gavin}
+    - {family-names: Kapre, given-names: Nachiket}
+  conference:
+    name: "35th International Conference on Field-Programmable Logic and Applications (FPL 2025)"
+  year: 2025
+references:
+  - type: conference-paper
+    title: "Cocotb-PYNQ-PR: From Co-Simulation to Deployment, A Unified DFX Framework for PYNQ"
+    authors:
+      - {family-names: Guevara, given-names: Emir}
+      - {family-names: Sharma, given-names: Chaitanya}
+      - {family-names: Lusby, given-names: Gavin}
+      - {family-names: Kapre, given-names: Nachiket}
+    conference:
+      name: "International Conference on Field-Programmable Logic and Applications (FPL 2026)"
+    year: 2026

@@ -1,0 +1,105 @@
+version: "1.0"
+
+# Paper §5.1 running example: MatMul → GELU / Softmax pipeline.
+# rp0 is fixed to matmul; rp1 swaps between gelu and softmax at runtime.
+# axis_switch=true enables ol.chain(["rp0","rp1"]) for pipelined streaming.
+
+simulation:
+  tool: verilator
+  build_dir: build
+
+static_region:
+  name: mm_static
+  design: mm_static
+  # No sources → auto-generate static region + switch from YAML.
+  auto_wrap: true
+  auto_wrap_config:
+    clock_name: clk
+    reset_name: rst_n
+    reset_active_low: true
+  interfaces:
+    # AXI-Stream switch control
+    switch_ctrl:
+      type: axil
+      direction: subordinate
+      dw: 32
+      base_addr: 0x44A00000
+      addr_range: 0x10000
+
+    # DMA0 ↔ partition 0 (MatMul)
+    x0:
+      type: sb
+      direction: subordinate
+      dw: 32
+      dma_instance: axi_dma_0
+      base_addr: 0x40400000
+      addr_range: 0x10000
+    y0:
+      type: sb
+      direction: manager
+      dw: 32
+      dma_instance: axi_dma_0
+
+    # DMA1 ↔ partition 1 (GELU / Softmax)
+    x1:
+      type: sb
+      direction: subordinate
+      dw: 32
+      dma_instance: axi_dma_1
+      base_addr: 0x40410000
+      addr_range: 0x10000
+    y1:
+      type: sb
+      direction: manager
+      dw: 32
+      dma_instance: axi_dma_1
+
+partitions:
+  - name: rp0
+    rm_module: matmul_rm
+    clock: clk
+    boundary:
+      - name: data_in
+        direction: to_rm
+        width: 32
+      - name: result
+        direction: from_rm
+        width: 32
+    initial_rm: matmul
+
+  - name: rp1
+    rm_module: nonlin_rm
+    clock: clk
+    boundary:
+      - name: data_in
+        direction: to_rm
+        width: 32
+      - name: result
+        direction: from_rm
+        width: 32
+    initial_rm: gelu
+
+reconfigurable_modules:
+  - name: matmul
+    partition: rp0
+    design: matmul_rm
+    sources: [rtl/matmul_rm.sv]
+    auto_wrap: true
+    auto_wrap_config:
+      clock_name: clk
+
+  - name: gelu
+    partition: rp1
+    design: nonlin_rm
+    sources: [rtl/gelu_rm.sv]
+    auto_wrap: true
+    auto_wrap_config:
+      clock_name: clk
+
+  - name: softmax
+    partition: rp1
+    design: nonlin_rm
+    sources: [rtl/softmax_rm.sv]
+    auto_wrap: true
+    auto_wrap_config:
+      clock_name: clk

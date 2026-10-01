@@ -1,2 +1,5 @@
 global-include *.v
 global-include *.hwh
+recursive-include src/cocotbpynq/_pr_engine/codegen/templates *.j2
+include src/cocotbpynq/sample/*.diff
+global-include *.sv
