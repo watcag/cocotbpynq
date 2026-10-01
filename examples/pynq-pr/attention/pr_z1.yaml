@@ -1,0 +1,69 @@
+project: attention_z1
+board: z1
+reconfiguration_method: icap
+
+sources:
+  - rtl/qk_top.v
+  - rtl/sfm_top.v
+  - rtl/pv_top.v
+  - rtl/mm_pp.sv
+  - rtl/control_pp.sv
+  - rtl/s2mm_pp.sv
+  - rtl/mm2s_pp.sv
+  - rtl/mem_read_D_pp.sv
+  - rtl/mem_write_B_pp.sv
+  - rtl/ping_pong_control.sv
+  - rtl/systolic.sv
+  - rtl/pe.sv
+  - rtl/mm2s.sv
+  - rtl/counter.sv
+  - rtl/mem_read.sv
+  - rtl/mem_read_D.sv
+  - rtl/mem_write_A.sv
+  - rtl/mem_write_B.sv
+  - rtl/mem_write_D.sv
+  - rtl/mem.sv
+  - rtl/mem_top.sv
+  - rtl/mem_B.sv
+  - rtl/mem_par.sv
+  - rtl/mem_dist.sv
+  - rtl/softmax.sv
+  - rtl/exp.sv
+  - rtl/max.sv
+  - rtl/acc.sv
+  - rtl/div.sv
+  - rtl/sreg.sv
+  - rtl/lopd.sv
+
+reconfigurable_partitions:
+  - partition_name: attn
+    modules:
+      - cell_name: qk
+        top: qk_top
+        parameters:
+          D_W: 8
+          D_W_ACC: 32
+          SEQ_LEN: 32
+          HEAD_DIM: 64
+          N1: 4
+          N2: 4
+          MATRIXSIZE_W: 16
+
+      - cell_name: sfm
+        top: sfm_top
+        parameters:
+          D_W: 8
+          D_W_ACC: 32
+          SEQ_LEN: 32
+          MATRIXSIZE_W: 16
+
+      - cell_name: pv
+        top: pv_top
+        parameters:
+          D_W: 8
+          D_W_ACC: 32
+          SEQ_LEN: 32
+          HEAD_DIM: 64
+          N1: 4
+          N2: 4
+          MATRIXSIZE_W: 16

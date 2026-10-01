@@ -1,0 +1,150 @@
+project: vision_kv260
+board: kv260
+reconfiguration_method: icap
+axis_switch: true
+
+sources:
+  - rtl/wrappers/gaussian3x3_top.v
+  - rtl/wrappers/median3x3_top.v
+  - rtl/wrappers/laplacian3x3_top.v
+  - rtl/wrappers/sobel_mag_top.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_AXILiteS_s_axi.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_Block_entry1_proc.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_fifo_w32_d2_S.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_fifo_w32_d3_S.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_fifo_w8_d2_S.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_filter2D_0_3_3_0_0_1080_1920_1_2_2_s.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_flow_control_loop_pipe_sequential_init.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_gray_to_stream.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_gray_to_stream_Pipeline_gray_to_stream_loop.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_hls_deadlock_detection_unit.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_hls_deadlock_idx0_monitor.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_mac_muladd_16s_8ns_24s_25_4_0.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_mac_muladd_16s_8ns_25s_26_4_0.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_mac_muladd_16s_8ns_26s_27_4_0.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_mac_muladd_16s_8ns_27s_28_4_0.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_mul_mul_11ns_11ns_22_4_1.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_mul_mul_16s_8ns_24_4_0.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_mux_32_8_1_1.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_mux_94_16_1_1.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_regslice_both.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_start_for_gray_to_stream_U0.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_stream_to_gray.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_stream_to_gray_Pipeline_stream_to_gray_loop.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_xFApplyFilter2D_0_0_3_3_1_s.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_xFFilter2Dkernel_0_0_1080_1920_0_0_1_2_2_1_1_1920_3_3_1_s.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_xFFilter2Dkernel_Pipeline_COL_LOOP.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_xFFilter2Dkernel_Pipeline_COL_LOOP_k_buf_V_1_RAM_AUTO_1R1W.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_xFFilter2Dkernel_Pipeline_COL_LOOP_k_buf_V_RAM_AUTO_1R1W.v
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_hls_deadlock_detector.vh
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_hls_deadlock_kernel_monitor_top.vh
+  - rtl/generated/gaussian3x3_hls/gaussian3x3_hls_hls_deadlock_report_unit.vh
+  - rtl/generated/median3x3_hls/median3x3_hls.v
+  - rtl/generated/median3x3_hls/median3x3_hls_AXILiteS_s_axi.v
+  - rtl/generated/median3x3_hls/median3x3_hls_Block_entry1_proc.v
+  - rtl/generated/median3x3_hls/median3x3_hls_fifo_w32_d2_S.v
+  - rtl/generated/median3x3_hls/median3x3_hls_fifo_w32_d3_S.v
+  - rtl/generated/median3x3_hls/median3x3_hls_fifo_w8_d2_S.v
+  - rtl/generated/median3x3_hls/median3x3_hls_flow_control_loop_pipe_sequential_init.v
+  - rtl/generated/median3x3_hls/median3x3_hls_gray_to_stream.v
+  - rtl/generated/median3x3_hls/median3x3_hls_gray_to_stream_Pipeline_gray_to_stream_loop.v
+  - rtl/generated/median3x3_hls/median3x3_hls_hls_deadlock_detection_unit.v
+  - rtl/generated/median3x3_hls/median3x3_hls_hls_deadlock_idx0_monitor.v
+  - rtl/generated/median3x3_hls/median3x3_hls_medianBlur_3_1_0_1080_1920_1_0_2_2_s.v
+  - rtl/generated/median3x3_hls/median3x3_hls_mul_mul_11ns_11ns_22_4_1.v
+  - rtl/generated/median3x3_hls/median3x3_hls_mux_32_13_1_1.v
+  - rtl/generated/median3x3_hls/median3x3_hls_mux_32_8_1_1.v
+  - rtl/generated/median3x3_hls/median3x3_hls_regslice_both.v
+  - rtl/generated/median3x3_hls/median3x3_hls_start_for_gray_to_stream_U0.v
+  - rtl/generated/median3x3_hls/median3x3_hls_stream_to_gray.v
+  - rtl/generated/median3x3_hls/median3x3_hls_stream_to_gray_Pipeline_stream_to_gray_loop.v
+  - rtl/generated/median3x3_hls/median3x3_hls_xFMedianNxN_1080_1920_1_0_1_0_2_2_0_1921_3_9_Pipeline_Col_Loop.v
+  - rtl/generated/median3x3_hls/median3x3_hls_xFMedianNxN_1080_1920_1_0_1_0_2_2_0_1921_3_9_s.v
+  - rtl/generated/median3x3_hls/median3x3_hls_xFMedianNxN_1080_1920_1_0_1_0_2_2_0_1921_3_9_s_buf_V_RAM_S2P_BRAM_1R1W.v
+  - rtl/generated/median3x3_hls/median3x3_hls_xFMedianNxN_Pipeline_VITIS_LOOP_417_1.v
+  - rtl/generated/median3x3_hls/median3x3_hls_xFMedianNxN_Pipeline_VITIS_LOOP_430_2.v
+  - rtl/generated/median3x3_hls/median3x3_hls_xFMedianNxN_Pipeline_VITIS_LOOP_442_3.v
+  - rtl/generated/median3x3_hls/median3x3_hls_xFMedianProc_1_1_0_3_9_s.v
+  - rtl/generated/median3x3_hls/median3x3_hls_hls_deadlock_detector.vh
+  - rtl/generated/median3x3_hls/median3x3_hls_hls_deadlock_kernel_monitor_top.vh
+  - rtl/generated/median3x3_hls/median3x3_hls_hls_deadlock_report_unit.vh
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_AXILiteS_s_axi.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_Block_entry1_proc.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_fifo_w16_d2_S.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_fifo_w32_d2_S.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_fifo_w32_d3_S.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_fifo_w8_d2_S.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_filter2D_0_3_3_0_3_1080_1920_1_2_2_s.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_flow_control_loop_pipe_sequential_init.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_grad_abs_to_gray.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_grad_abs_to_gray_Pipeline_grad_abs_to_gray_loop.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_gray_to_stream.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_gray_to_stream_Pipeline_gray_to_stream_loop.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_hls_deadlock_detection_unit.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_hls_deadlock_idx0_monitor.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_mul_mul_11ns_11ns_22_4_1.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_mul_mul_16s_8ns_24_4_0.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_mux_32_8_1_1.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_mux_94_16_1_1.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_regslice_both.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_start_for_grad_abs_to_gray_U0.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_start_for_gray_to_stream_U0.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_stream_to_gray.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_stream_to_gray_Pipeline_stream_to_gray_loop.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_xFApplyFilter2D_0_4_3_3_1_s.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_xFFilter2Dkernel_0_3_1080_1920_0_4_1_2_2_1_6_1920_3_3_1_s.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_xFFilter2Dkernel_Pipeline_COL_LOOP.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_xFFilter2Dkernel_Pipeline_COL_LOOP_k_buf_V_1_RAM_AUTO_1R1W.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_xFFilter2Dkernel_Pipeline_COL_LOOP_k_buf_V_RAM_AUTO_1R1W.v
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_hls_deadlock_detector.vh
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_hls_deadlock_kernel_monitor_top.vh
+  - rtl/generated/laplacian3x3_hls/laplacian3x3_hls_hls_deadlock_report_unit.vh
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_AXILiteS_s_axi.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_Block_entry1_proc.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_Sobel_0_3_0_3_1080_1920_1_false_2_2_2_s.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_fifo_w16_d2_S.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_fifo_w32_d2_S.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_fifo_w32_d3_S.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_fifo_w8_d2_S.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_flow_control_loop_pipe_sequential_init.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_gray_to_stream.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_gray_to_stream_Pipeline_gray_to_stream_loop.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_hls_deadlock_detection_unit.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_hls_deadlock_idx0_monitor.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_mul_mul_11ns_11ns_22_4_1.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_mux_32_8_1_1.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_regslice_both.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_sobel_mag_to_gray.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_sobel_mag_to_gray_Pipeline_sobel_mag_to_gray_loop.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_start_for_gray_to_stream_U0.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_start_for_sobel_mag_to_gray_U0.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_stream_to_gray.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_stream_to_gray_Pipeline_stream_to_gray_loop.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_xFGradientX3x3_0_4_s.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_xFGradientY3x3_0_4_s.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_xFSobel3x3_1_1_0_4_s.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_xFSobelFilter3x3_0_3_1080_1920_1_0_4_1_2_2_2_1_6_1920_false_s.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_xFSobelFilter3x3_0_3_1080_1920_1_0_4_1_2_2_2_1_6_1920_false_s_buf_V_RAM_S2P_Bbkb.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_xFSobelFilter3x3_Pipeline_Clear_Row_Loop.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_xFSobelFilter3x3_Pipeline_Col_Loop.v
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_hls_deadlock_detector.vh
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_hls_deadlock_kernel_monitor_top.vh
+  - rtl/generated/sobel_mag_hls/sobel_mag_hls_hls_deadlock_report_unit.vh
+
+reconfigurable_partitions:
+  - partition_name: rp0
+    modules:
+      - cell_name: gaussian3x3
+        top: gaussian3x3_top
+      - cell_name: median3x3
+        top: median3x3_top
+
+  - partition_name: rp1
+    modules:
+      - cell_name: laplacian3x3
+        top: laplacian3x3_top
+      - cell_name: sobel_mag
+        top: sobel_mag_top

@@ -20,3 +20,9 @@ uv.lock
 **/out/
 **/dump.vcd
 **/merged.vcd
+
+# pynq-pr outputs (pynq-pr build / pynq-pr sim)
+output/
+examples/pynq-pr/*/sim/
+.eggs/
+*.pyc
