@@ -52,11 +52,12 @@ examples/cocotbpynq/   partial-reconfiguration co-simulation examples
 examples/pynq-pr/      DFX examples: build, simulate, deploy
 docs/pynq-pr/          tutorial, KV260 notes, common errors
 scripts/               release tooling (bump.py, version and wheel checks)
+tests/                 fast checks that need no simulator (pytest tests)
 ```
 
-## Releasing
+## Contributing
 
-Both packages share one version. `python scripts/bump.py X.Y.Z` sets it, then a `vX.Y.Z` tag on `main` makes CI build both packages and publish a GitHub Release with the wheels.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, the pull-request workflow, adding a board and releasing. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## Papers
 
