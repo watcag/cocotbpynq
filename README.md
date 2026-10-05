@@ -17,19 +17,17 @@ This repository holds two packages, released together under one version:
 
 ## Install
 
-Releases are published on [GitHub Releases](https://github.com/watcag/cocotbpynq/releases) (PyPI is not updated yet; its `cocotbpynq` is the old 0.0.3). Replace `0.2.0` with the release you want. Simulation also needs Verilator 5.036+; the `verilator` wheel from PyPI works and is found automatically.
+cocotbpynq is on PyPI. pynq-pr is published on [GitHub Releases](https://github.com/watcag/cocotbpynq/releases) until it is on PyPI too; replace `0.2.0` with the release you want. Simulation also needs Verilator 5.036+; the `verilator` wheel from PyPI works and is found automatically.
 
 ```sh
-REL=https://github.com/watcag/cocotbpynq/releases/expanded_assets/v0.2.0
-
 # host, co-simulation only
-pip install "cocotbpynq==0.2.0" verilator --find-links $REL
+pip install cocotbpynq verilator
 
 # host, partial-reconfiguration build flow and simulation
-pip install "pynq-pr[sim]==0.2.0" verilator --find-links $REL
+pip install "pynq-pr[sim]==0.2.0" verilator --find-links https://github.com/watcag/cocotbpynq/releases/expanded_assets/v0.2.0
 
 # PYNQ board (in the PYNQ venv): runtime only, does not touch pynq or numpy
-pip install "pynq-pr==0.2.0" --find-links $REL
+pip install "pynq-pr==0.2.0" --find-links https://github.com/watcag/cocotbpynq/releases/expanded_assets/v0.2.0
 ```
 
 Offline board: download `pynq_pr-0.2.0-py3-none-any.whl` from the release page, copy it to the board and run `pip install --no-deps pynq_pr-0.2.0-py3-none-any.whl`.

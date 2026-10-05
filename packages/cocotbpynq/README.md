@@ -1,24 +1,22 @@
 # cocotbpynq
 cocotbpynq is an extension of cocotb that lets PYNQ applications run in simulation. This makes it possible to debug AXI transactions between the programmable logic (PL) and processing system (PS) before deploying to hardware. The included example targets the PYNQ-Z1, and the same approach can be adapted to other PYNQ-compatible platforms.
 
-It also contains a swap-aware partial-reconfiguration (PR) co-simulation engine, used by [pynq-pr](../pynq-pr/) to simulate reconfigurable-module swaps while the static design keeps running.
+It also contains a swap-aware partial-reconfiguration (PR) co-simulation engine, used by [pynq-pr](https://github.com/watcag/cocotbpynq/tree/main/packages/pynq-pr) to simulate reconfigurable-module swaps while the static design keeps running.
 
 The API is not yet stable (0.x releases): minor versions may change it.
 
 ## Installation
-cocotbpynq runs on the host (Linux or macOS), not on the PYNQ board. Releases are published on [GitHub Releases](https://github.com/watcag/cocotbpynq/releases); replace `0.2.0` with the release you want:
+cocotbpynq runs on the host (Linux or macOS), not on the PYNQ board. Install it from PyPI:
 
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
-pip install "cocotbpynq==0.2.0" verilator --find-links https://github.com/watcag/cocotbpynq/releases/expanded_assets/v0.2.0
+pip install cocotbpynq verilator
 python -m cocotbpynq.sample          # should end with TESTS=1 PASS=1 FAIL=0
 ```
 
-The `cocotbpynq` package on PyPI is still the old 0.0.3 (cocotb 1.x) and does not work with cocotb 2.x.
-
 cocotbpynq needs Verilator 5.036 or newer, which Linux distribution packages (e.g. `apt`) do not provide yet. The `verilator` wheel from PyPI (installed above) works and cocotbpynq finds it automatically. Other options: `brew install verilator` (macOS) or the [oss-cad-suite](https://github.com/YosysHQ/oss-cad-suite-build) tarball.
 
-To run the examples, work from a clone (see the [repository README](../../README.md)).
+To run the examples, work from a clone (see the [repository README](https://github.com/watcag/cocotbpynq#readme)).
 
 ### Requirements
 | | Supported | Tested |
@@ -57,7 +55,7 @@ pip install "./packages/cocotbpynq[examples]" verilator
 cd examples/cocotbpynq/axi_pr_example && python run.py
 ```
 
-For the full Vivado DFX flow (block design, floorplanning, partial bitstreams, board runtime) from a single YAML file, see [pynq-pr](../pynq-pr/).
+For the full Vivado DFX flow (block design, floorplanning, partial bitstreams, board runtime) from a single YAML file, see [pynq-pr](https://github.com/watcag/cocotbpynq/tree/main/packages/pynq-pr).
 
 `PRCocotbRunner(merge_waveforms=True)` is experimental and requires the unreleased `ewal` waveform tool; it is off by default.
 
