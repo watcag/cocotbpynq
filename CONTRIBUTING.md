@@ -55,7 +55,7 @@ Both packages share one version.
 
 1. On a branch, run `python scripts/bump.py X.Y.Z` and move the *Unreleased* changelog entries under `X.Y.Z`. Open a PR and squash-merge it once CI is green.
 2. For a minor release (`X.Y.0`), run the hardware smoke test first: install pynq-pr on a Z1 and a KV260, run `examples/pynq-pr/add_sub`, and check that `pip list` still shows the image's `pynq` and `numpy`.
-3. Tag the merged commit and push the tag. CI builds both packages and publishes a GitHub Release with the wheels:
+3. Tag the merged commit and push the tag. CI builds both packages, publishes a GitHub Release with the wheels, and uploads cocotbpynq to **TestPyPI** for release candidates (`X.Y.ZrcN`, a dry run) or to **PyPI** for final releases. pynq-pr is uploaded too once the repository variable `PUBLISH_PYNQ_PR_TO_PYPI` is `true` (after it has a license):
    ```sh
    git tag -a vX.Y.Z -m "X.Y.Z" origin/main && git push origin vX.Y.Z
    ```

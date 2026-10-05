@@ -10,6 +10,7 @@ Both packages (cocotbpynq and pynq-pr) are released together under one version f
 - pynq-pr uses cocotbpynq's public API: `cocotbpynq.pr` exports `PRSystem`, and `PRCocotbRunner` takes `hwh_alias`.
 - The ICAP primitive comes from the board definition. Adding a board means adding an entry in `boards.py` and `scripts/ps_<board>.tcl`.
 - Vivado versions other than the tested 2022.2 warn instead of stopping the build. 2022.1 is still rejected.
+- cocotbpynq is published on PyPI again (`pip install cocotbpynq`). pynq-pr stays on GitHub Releases until it has a license.
 
 ### Removed
 - `pynq_pr/floorplan_strips.py`, which nothing used.
