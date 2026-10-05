@@ -35,9 +35,9 @@ jobs:
           gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
             --title "${GITHUB_REF_NAME#v}" --generate-notes $flags
 
-  # Release candidates (vX.Y.ZrcN) go to TestPyPI as a dry run; final releases go to PyPI.
-  # Both use Trusted Publishing (no tokens). pynq-pr is only uploaded once it has a
-  # license: set the repository variable PUBLISH_PYNQ_PR_TO_PYPI=true.
+  # Release candidates (vX.Y.ZrcN) go to TestPyPI as a dry run (both packages); final
+  # releases go to PyPI. Both use Trusted Publishing (no tokens). pynq-pr is only uploaded
+  # to PyPI once it has a license: set the repository variable PUBLISH_PYNQ_PR_TO_PYPI=true.
   testpypi:
     if: contains(github.ref_name, 'rc')
     needs: build
@@ -47,8 +47,6 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with: {name: dist, path: dist/}
-      - if: vars.PUBLISH_PYNQ_PR_TO_PYPI != 'true'
-        run: rm -f dist/pynq_pr-*
       - uses: pypa/gh-action-pypi-publish@release/v1
         with: {repository-url: "https://test.pypi.org/legacy/"}
 
