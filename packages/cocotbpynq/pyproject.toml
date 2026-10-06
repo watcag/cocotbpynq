@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cocotbpynq"
-version = "0.2.0rc3"
+version = "0.2.0"
 authors = [
     { name="Gavin Lusby", email="gdplusby@uwaterloo.ca" },
     { name="Nachiket Kapre", email="nachiket@uwaterloo.ca" },
