@@ -2,7 +2,7 @@
 
 Both packages (cocotbpynq and pynq-pr) are released together under one version from 0.2.0 onwards.
 
-## Unreleased (0.2.0)
+## 0.2.0 (2026-10-06)
 
 ### Changed
 - cocotbpynq and pynq-pr live in one repository and share one version. pynq-pr moved here from `watcag/pynq-pr`.
