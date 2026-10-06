@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pynq-pr"
-version = "0.2.0rc1"
+version = "0.2.0rc2"
 requires-python = ">=3.10"
 description = "YAML-driven Vivado DFX (partial reconfiguration) flow, swap-aware co-simulation and PYNQ runtime for Cocotb-PYNQ-PR designs"
 readme = "README.md"
@@ -21,7 +21,7 @@ dependencies = ["pyyaml>=5.4"]
 
 [project.optional-dependencies]
 # Same release as this package; scripts/bump.py keeps the pin in sync.
-sim = ["cocotbpynq==0.2.0rc1"]
+sim = ["cocotbpynq==0.2.0rc2"]
 examples = ["pillow"]
 
 [project.urls]
