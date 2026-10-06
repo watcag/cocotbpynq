@@ -729,6 +729,7 @@ class VerilatorBuilder:
                     top_module=rm['wrapper_name'],
                     sources=[str(wrapper_path)] + rm_sources,
                     include_dirs=rm.get('include_dirs', []),
+                    verilator_flags=rm.get('verilator_flags', []),
                     obj_dir_prefix=f"rm/{rm['name']}/",
                 )
 

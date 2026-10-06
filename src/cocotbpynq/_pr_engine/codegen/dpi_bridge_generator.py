@@ -138,6 +138,77 @@ def _group_by_clock(ports: List[BoundaryPort], default_clock: str) -> Dict[str, 
     return groups
 
 
+AXIS_DEPTH = 16      # RM-side stream FIFO entries
+AXIS_CREDIT = 8      # credit while at most this many are held; covers the beats in flight
+
+
+def _axis_glue(to_rm, from_rm, clk):
+    """RM-side half of the stream protocol across the DPI boundary.
+
+    Each side sees the other's signals a cycle late, so TVALID/TREADY cannot be a
+    handshake across it.  A beat crosses as a one-cycle TVALID pulse; TREADY
+    across the boundary is a credit.  Here a FIFO per stream does the RM's real
+    handshake: for an input stream (TVALID to the RM) it takes every pulse and
+    returns credit while it holds at most AXIS_CREDIT beats; for an output
+    stream it accepts the RM's beats and sends one per cycle while the static
+    side gives credit.  The static side does the mirror image.
+
+    Returns ({rm port: net the RM connects to}, SystemVerilog text).
+    """
+    ins = {p.name: p for p in to_rm}
+    outs = {p.name: p for p in from_rm}
+    reset_cond = "!rst_n" if 'rst_n' in ins else "1'b0"
+    net, text = {}, []
+    for valid, src, dst in [(n, ins, outs) for n in ins] + [(n, outs, ins) for n in outs]:
+        if not valid.endswith('_TVALID'):
+            continue
+        pre = valid[:-len('TVALID')]
+        ready = pre + 'TREADY'
+        if ready not in dst:
+            continue
+        payload = [src[n] for n in src if n.startswith(pre) and n not in (valid, ready)]
+        q = pre + 'q'
+        for n in [valid, ready] + [x.name for x in payload]:
+            net[n] = n + '_rm'
+        t = text.append
+        t(f"    // stream {pre}* across the DPI boundary (see _axis_glue)")
+        t(f"    wire {valid}_rm, {ready}_rm;")
+        for x in payload:
+            w = f"[{x.width - 1}:0] " if x.width > 1 else ""
+            t(f"    wire {w}{x.name}_rm;")
+            t(f"    reg {w}{q}_{x.name} [0:{AXIS_DEPTH - 1}];")
+        t(f"    reg [3:0] {q}_wr, {q}_rd; reg [4:0] {q}_n;")
+        if src is ins:      # into the RM
+            t(f"    wire {q}_push = {valid};")
+            t(f"    wire {q}_pop = {q}_n != 0 && {ready}_rm;")
+            t(f"    assign {valid}_rm = {q}_n != 0;")
+            t(f"    assign {ready} = {q}_n <= {AXIS_CREDIT};")
+            for x in payload:
+                t(f"    assign {x.name}_rm = {q}_{x.name}[{q}_rd];")
+        else:               # out of the RM
+            t(f"    wire {q}_push = {valid}_rm && {ready}_rm;")
+            t(f"    wire {q}_pop = {q}_n != 0 && {ready};")
+            t(f"    assign {ready}_rm = {q}_n < {AXIS_DEPTH};")
+            t(f"    assign {valid} = {q}_pop;")
+            for x in payload:
+                t(f"    assign {x.name} = {q}_{x.name}[{q}_rd];")
+        t(f"    always @(posedge {clk}) begin")
+        t(f"        if ({reset_cond}) begin {q}_wr <= 0; {q}_rd <= 0; {q}_n <= 0; end")
+        t(f"        else begin")
+        src_val = (lambda x: x.name) if src is ins else (lambda x: x.name + '_rm')
+        t(f"            if ({q}_push) begin")
+        for x in payload:
+            t(f"                {q}_{x.name}[{q}_wr] <= {src_val(x)};")
+        t(f"                {q}_wr <= {q}_wr + 1'b1;")
+        t(f"            end")
+        t(f"            if ({q}_pop) {q}_rd <= {q}_rd + 1'b1;")
+        t(f"            {q}_n <= {q}_n + {{4'd0, {q}_push}} - {{4'd0, {q}_pop}};")
+        t(f"        end")
+        t(f"    end")
+        t("")
+    return net, "\n".join(text)
+
+
 def _create_bridge_env() -> jinja2.Environment:
     """Create Jinja2 environment with bridge-specific globals."""
     env = jinja2.Environment(
@@ -213,8 +284,11 @@ class DpiBridgeGenerator:
             wrapper_name = f"{rm_design_name}_dpi_wrapper"
         default_clk = boundary.clock_names[0]
 
+        rm_net, axis_glue = _axis_glue(to_rm, from_rm, default_clk)
         template = self._env.get_template('dpi_rm_wrapper.sv.j2')
         content = template.render(
+            rm_net=rm_net,
+            axis_glue=axis_glue,
             part=boundary.partition_name,
             rm_design_name=rm_design_name,
             wrapper_name=wrapper_name,
