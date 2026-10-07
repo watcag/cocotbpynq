@@ -357,6 +357,8 @@ class PRSystem:
                         'sources': rm_sources,
                         'include_dirs': self._resolve_sources(rm_cfg.get('include_dirs', [])),
                         'verilator_flags': rm_cfg.get('verilator_flags', []),
+                        'simulator': rm_cfg.get('simulator', 'verilator'),
+                        'verilator_public': rm_cfg.get('verilator_public', True),
                         'parameters': rm.parameters,
                     })
                     rm._rm_index = rm_idx
