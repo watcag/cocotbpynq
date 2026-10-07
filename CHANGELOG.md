@@ -2,6 +2,21 @@
 
 Both packages (cocotbpynq and pynq-pr) are released together under one version from 0.2.0 onwards.
 
+## Unreleased
+
+### Added
+- Netlist co-simulation of RMs: a Vivado funcsim netlist runs on the Vivado simulator through XSI (`simulator: xsim`) or on Verilator with Verilator-compatible primitive models (`verilator_flags`, `verilator_public: false`).
+- RM `include_dirs` and `verilator_flags` in `reconfigurable_modules` reach the RM's build.
+- A partition can have several DMAs, one per AXI-Stream pair (`partition:` on the DMA's `sb` interfaces).
+- The DMA model streams beats of any TDATA width and keeps the AXI DMA simple-mode registers PYNQ reads (DMACR, DMASR, LENGTH). `allocate()` returns a buffer with `flush()`, `invalidate()` and `physical_address`, and models the CPU cache.
+
+### Changed
+- `PRSystem.reconfigure()` waits up to 60 s for the new RM (was 10 s): a large netlist RM on the Vivado simulator can take longer to load.
+
+### Fixed
+- AXI-Lite writes deadlocked on a slave that waits for both AWVALID and WVALID.
+- AXI-Stream beats across the PR boundary were lost or duplicated when the RM dropped or raised TREADY.
+
 ## 0.2.0 (2026-10-06)
 
 ### Changed
