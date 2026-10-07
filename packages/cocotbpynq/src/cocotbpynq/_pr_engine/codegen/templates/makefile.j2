@@ -42,7 +42,7 @@ LDFLAGS += {{ extra_ldflags }}
 # RM: {{ rm.name }}
 {{ rm_lib_path }}: {{ mod.sources | join(' ') }}
 	@mkdir -p {{ rm_obj_dir }}
-	$(VERILATOR) {{ verilator_common }} {{ rm_obj_dir }} {{ verilator_trace }} --top-module {{ mod.top_module }} --public-flat-rw -Wno-WIDTHTRUNC{% if mod.verilator_flags %} {{ mod.verilator_flags | join(' ') }}{% endif %} {% for d in mod.include_dirs %}-I{{ d }} {% endfor %}{{ mod.sources | join(' ') }}
+	$(VERILATOR) {{ verilator_common }} {{ rm_obj_dir }} {{ verilator_trace }} --top-module {{ mod.top_module }}{% if mod.verilator_public %} --public-flat-rw{% endif %} -Wno-WIDTHTRUNC{% if mod.verilator_flags %} {{ mod.verilator_flags | join(' ') }}{% endif %} {% for d in mod.include_dirs %}-I{{ d }} {% endfor %}{{ mod.sources | join(' ') }}
 	$(MAKE) -C {{ rm_obj_dir }} -f V{{ mod.top_module }}.mk
 
 {% endfor %}

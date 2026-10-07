@@ -343,6 +343,7 @@ class PRSystem:
                 for rm_idx, (rm_name, rm) in enumerate(partition.registered_rms.items()):
                     rm_design = rm.design or rm_name
                     rm_sources = self._resolve_sources(rm.sources)
+                    rm_cfg = (self.config.get_rm(rm_name) if self.config else None) or {}
                     if rm.parameters:
                         safe_params = "_".join(f"{k}{v}" for k, v in rm.parameters.items())
                         wrapper_name = f"{rm_design}_{safe_params}_dpi_wrapper"
@@ -354,7 +355,9 @@ class PRSystem:
                         'wrapper_name': wrapper_name,
                         'index': rm_idx,
                         'sources': rm_sources,
-                        'include_dirs': [],
+                        'include_dirs': self._resolve_sources(rm_cfg.get('include_dirs', [])),
+                        'verilator_flags': rm_cfg.get('verilator_flags', []),
+                        'verilator_public': rm_cfg.get('verilator_public', True),
                         'parameters': rm.parameters,
                     })
                     rm._rm_index = rm_idx
