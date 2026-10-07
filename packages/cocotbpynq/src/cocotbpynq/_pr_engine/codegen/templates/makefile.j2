@@ -37,6 +37,25 @@ LDFLAGS += {{ extra_ldflags }}
 {% endif %}
 {% for rm in rm_binaries %}
 {% set mod = rm.module %}
+{% if mod.simulator == 'xsim' %}
+{% set xd = "$(BUILD_DIR)/rm/" ~ rm.name %}
+# RM: {{ rm.name }} on the Vivado simulator: DPI library, `xelab -dll` snapshot, XSI driver
+{{ xd }}/libdpi_rm.so: {{ rm.dpi_rm_cpp }} $(DPI_DIR)/xsim_rm_globals.cpp
+	@mkdir -p {{ xd }}
+	$(CXX) -std=c++17 -O2 -fPIC -shared -static-libstdc++ -static-libgcc -I$(DPI_DIR) -I$(XILINX_VIVADO)/data/xsim/include -o $@ $^
+
+{{ xd }}/xsim.dir/rm/xsimk.so: {{ mod.sources | join(' ') }} {{ xd }}/libdpi_rm.so
+	cd {{ xd }} && xvlog $(XILINX_VIVADO)/data/verilog/src/glbl.v {% for d in mod.include_dirs %}-i $(abspath {{ d }}) {% endfor %}{% for s in mod.sources[1:] if not s.endswith('.sv') %}$(abspath {{ s }}) {% endfor %}> xvlog.log && \
+	  xvlog -sv {% for d in mod.include_dirs %}-i $(abspath {{ d }}) {% endfor %}$(abspath {{ mod.sources[0] }}) {% for s in mod.sources[1:] if s.endswith('.sv') %}$(abspath {{ s }}) {% endfor %}>> xvlog.log && \
+	  xelab -dll -s rm -O2 -L unisims_ver -L secureip -sv_root $(abspath {{ xd }}) -sv_lib libdpi_rm {{ mod.top_module }} glbl > xelab.log
+
+{{ xd }}/rm_xsim: $(DPI_DIR)/rm_driver_xsim_{{ rm.name }}.cpp {{ xd }}/xsim.dir/rm/xsimk.so
+	cp $(XILINX_VIVADO)/examples/xsim/verilog/xsi/counter/xsi_loader.cpp $(XILINX_VIVADO)/examples/xsim/verilog/xsi/counter/xsi_loader.h $(XILINX_VIVADO)/examples/xsim/verilog/xsi/counter/xsi_shared_lib.h {{ xd }}/
+	$(CXX) -std=c++17 -O2 -I$(DPI_DIR) -I{{ xd }} -I$(XILINX_VIVADO)/data/xsim/include \
+	  -DXSI_KERNEL='"$(if $(wildcard $(XILINX_VIVADO)/lib/lnx64.o/libxv_simulator_kernel.so),libxv,librdi)_simulator_kernel.so"' \
+	  -o $@ $< {{ xd }}/xsi_loader.cpp -ldl -static-libstdc++ -static-libgcc   # Vivado's own libstdc++ is first on LD_LIBRARY_PATH
+
+{% else %}
 {% set rm_obj_dir = "$(BUILD_DIR)/" ~ mod.obj_dir_prefix ~ "obj_dir" %}
 {% set rm_lib_path = rm_obj_dir ~ "/V" ~ mod.top_module ~ "__ALL.a" %}
 # RM: {{ rm.name }}
@@ -45,6 +64,7 @@ LDFLAGS += {{ extra_ldflags }}
 	$(VERILATOR) {{ verilator_common }} {{ rm_obj_dir }} {{ verilator_trace }} --top-module {{ mod.top_module }}{% if mod.verilator_public %} --public-flat-rw{% endif %} -Wno-WIDTHTRUNC{% if mod.verilator_flags %} {{ mod.verilator_flags | join(' ') }}{% endif %} {% for d in mod.include_dirs %}-I{{ d }} {% endfor %}{{ mod.sources | join(' ') }}
 	$(MAKE) -C {{ rm_obj_dir }} -f V{{ mod.top_module }}.mk
 
+{% endif %}
 {% endfor %}
 # ═══ Verilator support objects ═══
 
@@ -86,6 +106,13 @@ $(STATIC_BINARY): {{ static_lib }} {{ static_all_objs | join(' ') }}
 
 {% for rm in rm_binaries %}
 {% set mod = rm.module %}
+{% if mod.simulator == 'xsim' %}
+# The RM binary sets the Vivado simulator's library path and runs the XSI driver.
+$(RM_BINARY_{{ rm.name | upper }}): $(BUILD_DIR)/rm/{{ rm.name }}/rm_xsim
+	printf '#!/bin/sh\nexport LD_LIBRARY_PATH=$(XILINX_VIVADO)/lib/lnx64.o:$(XILINX_VIVADO)/lib/lnx64.o/Default:$$LD_LIBRARY_PATH\nexec $(abspath $<) "$$@"\n' > $@
+	chmod +x $@
+
+{% else %}
 {% set rm_obj_dir = "$(BUILD_DIR)/" ~ mod.obj_dir_prefix ~ "obj_dir" %}
 {% set rm_lib = rm_obj_dir ~ "/V" ~ mod.top_module ~ "__ALL.a" %}
 {% set rm_driver_obj = "$(BUILD_DIR)/rm/" ~ rm.name ~ "/rm_driver_" ~ rm.name ~ ".o" %}
@@ -124,6 +151,7 @@ $(RM_LIB_{{ rm.name | upper }}): {{ rm_lib }} {{ rm_lib_driver_obj }} {{ rm_lib_
 		{{ support_objs | join(' ') }} \
 		{{ rm_lib }} $(LDFLAGS)
 
+{% endif %}
 {% endfor %}
 all: {{ all_binaries | join(' ') }}
 {% if not rm_only %}

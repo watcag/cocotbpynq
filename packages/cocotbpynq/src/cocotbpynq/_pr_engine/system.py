@@ -357,6 +357,7 @@ class PRSystem:
                         'sources': rm_sources,
                         'include_dirs': self._resolve_sources(rm_cfg.get('include_dirs', [])),
                         'verilator_flags': rm_cfg.get('verilator_flags', []),
+                        'simulator': rm_cfg.get('simulator', 'verilator'),
                         'verilator_public': rm_cfg.get('verilator_public', True),
                         'parameters': rm.parameters,
                     })
@@ -579,7 +580,7 @@ class PRSystem:
         self,
         partition: str,
         new_rm: str,
-        timeout: float = 10.0
+        timeout: float = 60.0   # a large netlist RM on the Vivado simulator can take over 10 s to load
     ) -> bool:
         from . import trace
         if partition not in self.partitions:

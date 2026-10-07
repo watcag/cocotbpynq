@@ -731,6 +731,7 @@ class VerilatorBuilder:
                     include_dirs=rm.get('include_dirs', []),
                     verilator_flags=rm.get('verilator_flags', []),
                     obj_dir_prefix=f"rm/{rm['name']}/",
+                    simulator=rm.get('simulator', 'verilator'),
                     verilator_public=rm.get('verilator_public', True),
                 )
 

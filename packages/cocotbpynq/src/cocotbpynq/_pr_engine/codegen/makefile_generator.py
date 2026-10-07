@@ -25,6 +25,7 @@ class ModuleBuildInfo:
     include_dirs: List[str] = field(default_factory=list)
     verilator_flags: List[str] = field(default_factory=list)
     obj_dir_prefix: str = ''  # 'static/', 'rm/counter_rm/', etc.
+    simulator: str = 'verilator'  # RMs only: 'verilator' or 'xsim' (Vivado simulator through XSI)
     verilator_public: bool = True  # RMs only: --public-flat-rw (off for large netlists: it blocks inlining)
 
 

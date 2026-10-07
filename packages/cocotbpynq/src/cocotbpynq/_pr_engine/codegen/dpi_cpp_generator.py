@@ -153,6 +153,22 @@ class DpiCppGenerator:
         for part in partitions:
             for rm in part.rm_variants:
                 self.generate_rm_driver_cpp(part, rm, trace, trace_type)
+                if rm.get('simulator', 'verilator') == 'xsim':
+                    self.generate_rm_driver_xsim_cpp(part, rm)
+
+    def generate_rm_driver_xsim_cpp(self, part: PartitionInfo, rm: Dict[str, Any]):
+        """Driver of an RM simulated by the Vivado simulator (XSI), and its DPI library's channel pointers."""
+        assert_val = deassert_val = None
+        if part.reset_name is not None and part.reset_behavior != 'none_intel':
+            assert_val = 0 if part.reset_polarity == 'negative' else 1
+            deassert_val = 1 - assert_val
+        self._render('rm_driver_xsim.cpp.j2', self.dpi_dir / f"rm_driver_xsim_{rm['name']}.cpp",
+                     part=part, variant_name=rm['name'], rm_dir=str((self.build_dir / 'rm' / rm['name']).resolve()),
+                     assert_val=assert_val, deassert_val=deassert_val)
+        (self.dpi_dir / 'xsim_rm_globals.cpp').write_text(
+            '// Channel pointers of the DPI library of an xsim RM (set by rm_driver_xsim_*.cpp)\n'
+            '#include "dpi_shm_channel.h"\n'
+            'void* g_channel_base = nullptr;\nShmPartitionHeader* g_channel_header = nullptr;\n')
 
     def _render(self, template_name: str, output_path: Path, **kwargs):
         """Render a template and write to output_path."""

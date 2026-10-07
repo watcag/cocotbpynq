@@ -38,7 +38,7 @@ module {{ wrapper_name }} (
 
 {% for port in to_rm %}
 {% set width_str = "[" ~ (port.width - 1)|string ~ ":0]" if port.width > 1 else "" %}
-    reg {{ width_str }} {{ port.name }} /* verilator public */;
+    reg {{ width_str }} {{ port.name }} /* verilator public */ = '0;
 {% endfor %}
 {% for port in from_rm %}
 {% set width_str = "[" ~ (port.width - 1)|string ~ ":0]" if port.width > 1 else "" %}

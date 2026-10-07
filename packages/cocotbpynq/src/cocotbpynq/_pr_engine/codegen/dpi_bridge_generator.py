@@ -118,7 +118,7 @@ def _sv_recv_trunc(port: BoundaryPort, expr: str, chunk_idx: int = 0):
     cw = hi - lo + 1
 
     if port.width > 64:
-        trunc = expr if cw in (32, 64) else f"{expr}[{cw - 1}:0]"
+        trunc = expr if cw in (32, 64) else f"{cw}'({expr})"   # a size cast; xsim rejects f()[n:0]
         return (f"{port.name}[{hi}:{lo}]", trunc)
     else:
         dpi = _dpi_type(port.width)
@@ -126,7 +126,7 @@ def _sv_recv_trunc(port: BoundaryPort, expr: str, chunk_idx: int = 0):
             return expr
         if dpi == 'longint' and port.width == 64:
             return expr
-        return f"{expr}[{port.width - 1}:0]"
+        return f"{port.width}'({expr})"
 
 
 def _group_by_clock(ports: List[BoundaryPort], default_clock: str) -> Dict[str, List[BoundaryPort]]:
