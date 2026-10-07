@@ -68,6 +68,14 @@ cd examples/axi_pr_example && python run.py
 
 For the full Vivado DFX flow (block design, floorplanning, partial bitstreams, board runtime) from a single YAML file, see [pynq-pr](https://github.com/watcag/pynq-pr).
 
+An RM can run on the Vivado simulator instead of Verilator: `simulator: xsim` in its entry of
+`reconfigurable_modules`. Its sources are compiled with `xvlog`/`xelab -dll` (with Vivado's
+`unisims_ver` and `secureip`) and driven through XSI by a generated RM driver, under the same static
+region and test. This is how a Vivado netlist of an RM (`write_verilog -mode funcsim`) runs with
+Vivado's own primitive models. It needs Vivado 2024.1 or newer (`libxv_simulator_kernel.so`) with its
+`settings64.sh` sourced. For a large netlist on Verilator, `verilator_public: false` leaves out
+`--public-flat-rw`, which otherwise keeps every net from being optimised.
+
 `PRCocotbRunner(merge_waveforms=True)` is experimental and requires the unreleased `ewal` waveform tool; it is off by default.
 
 ## Versions and reproducing the papers
