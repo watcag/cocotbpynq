@@ -45,6 +45,7 @@ module {{ wrapper_name }} (
     wire {{ width_str }} {{ port.name }} /* verilator public */;
 {% endfor %}
 
+{{ axis_glue }}
     // Instantiate the real RM: {{ rm_design_name }}
 {% if parameters %}
     {{ rm_design_name }} #(
@@ -65,10 +66,10 @@ module {{ wrapper_name }} (
 {% do rm_conns.append("        ." ~ reset_name ~ "(" ~ reset_name ~ ")") %}
 {% endif %}
 {% for port in to_rm %}
-{% do rm_conns.append("        ." ~ port.name ~ "(" ~ port.name ~ ")") %}
+{% do rm_conns.append("        ." ~ port.name ~ "(" ~ rm_net.get(port.name, port.name) ~ ")") %}
 {% endfor %}
 {% for port in from_rm %}
-{% do rm_conns.append("        ." ~ port.name ~ "(" ~ port.name ~ ")") %}
+{% do rm_conns.append("        ." ~ port.name ~ "(" ~ rm_net.get(port.name, port.name) ~ ")") %}
 {% endfor %}
 {{ rm_conns | join(",\n") }}
     );

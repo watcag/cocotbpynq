@@ -410,13 +410,17 @@ def generate_static_region(
             a(f"    reg                  inq{pi}_last [0:1];")
             a(f"    reg                  inq{pi}_rd, inq{pi}_wr;")
             a(f"    reg [1:0]            inq{pi}_count;")
-            a(f"    reg [{p['dw']-1}:0] outq{pi}_data [0:1];")
-            a(f"    reg                  outq{pi}_last [0:1];")
-            a(f"    reg                  outq{pi}_rd, outq{pi}_wr;")
-            a(f"    reg [1:0]            outq{pi}_count;")
+            # The DPI boundary delivers each side's signals a cycle late, so a
+            # stream handshake cannot span it.  Beats cross as one-cycle TVALID
+            # pulses; TREADY across the boundary is a credit (room for the beats
+            # in flight), and the RM-side wrapper does the RM's real handshake.
+            a(f"    reg [{p['dw']-1}:0] outq{pi}_data [0:15];")
+            a(f"    reg                  outq{pi}_last [0:15];")
+            a(f"    reg [3:0]            outq{pi}_rd, outq{pi}_wr;")
+            a(f"    reg [4:0]            outq{pi}_count;")
             a(f"    wire                 inq{pi}_push = {in_pre}_tvalid & {in_pre}_tready;")
             a(f"    wire                 inq{pi}_pop = (inq{pi}_count != 0) & {p['prefix']}_x_TREADY;")
-            a(f"    wire                 outq{pi}_push = {p['prefix']}_y_TVALID & {p['prefix']}_y_TREADY;")
+            a(f"    wire                 outq{pi}_push = {p['prefix']}_y_TVALID;")
             a(f"    wire                 outq{pi}_pop = (outq{pi}_count != 0) & {out_pre}_tready;")
             a(f"")
             a(f"    assign {in_pre}_tready  = (inq{pi}_count != 2) & {rst_guard};")
@@ -428,11 +432,11 @@ def generate_static_region(
             if _find_port(p['to_rm'], 'x_TDATA', 'to_rm'):
                 a(f"    assign {p['prefix']}_x_TDATA = (inq{pi}_count != 0) ? inq{pi}_data[inq{pi}_rd] : {p['dw']}'d0;")
             if _find_port(p['to_rm'], 'x_TVALID', 'to_rm'):
-                a(f"    assign {p['prefix']}_x_TVALID = (inq{pi}_count != 0);")
+                a(f"    assign {p['prefix']}_x_TVALID = inq{pi}_pop;")
             if _find_port(p['to_rm'], 'x_TLAST', 'to_rm'):
                 a(f"    assign {p['prefix']}_x_TLAST = (inq{pi}_count != 0) ? inq{pi}_last[inq{pi}_rd] : 1'b0;")
             if _find_port(p['to_rm'], 'y_TREADY', 'to_rm'):
-                a(f"    assign {p['prefix']}_y_TREADY = (outq{pi}_count != 2);")
+                a(f"    assign {p['prefix']}_y_TREADY = (outq{pi}_count <= 8);")
             if p['axil_prefix']:
                 _emit_axilite_connections(a, p['prefix'], p['axil_prefix'], p['to_rm'], p['from_rm'], "    ")
             else:
@@ -444,8 +448,6 @@ def generate_static_region(
             a(f"            outq{pi}_rd <= 0; outq{pi}_wr <= 0; outq{pi}_count <= 0;")
             a(f"            inq{pi}_data[0] <= 0; inq{pi}_data[1] <= 0;")
             a(f"            inq{pi}_last[0] <= 0; inq{pi}_last[1] <= 0;")
-            a(f"            outq{pi}_data[0] <= 0; outq{pi}_data[1] <= 0;")
-            a(f"            outq{pi}_last[0] <= 0; outq{pi}_last[1] <= 0;")
             a(f"        end else begin")
             a(f"            if (inq{pi}_push) begin")
             a(f"                inq{pi}_data[inq{pi}_wr] <= {in_pre}_tdata;")
@@ -467,10 +469,10 @@ def generate_static_region(
                 a(f"                outq{pi}_last[outq{pi}_wr] <= {p['prefix']}_y_TLAST;")
             else:
                 a(f"                outq{pi}_last[outq{pi}_wr] <= 1'b0;")
-            a(f"                outq{pi}_wr <= ~outq{pi}_wr;")
+            a(f"                outq{pi}_wr <= outq{pi}_wr + 1'b1;")
             a(f"            end")
             a(f"            if (outq{pi}_pop) begin")
-            a(f"                outq{pi}_rd <= ~outq{pi}_rd;")
+            a(f"                outq{pi}_rd <= outq{pi}_rd + 1'b1;")
             a(f"            end")
             a(f"            case ({{outq{pi}_push, outq{pi}_pop}})")
             a(f"                2'b10: outq{pi}_count <= outq{pi}_count + 1'b1;")
