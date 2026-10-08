@@ -74,7 +74,7 @@ ol.addk_1.write(0x10, k)                     # any CU's registers, including ap_
 cd examples/cocotbpynq/alveo_example && python run.py
 ```
 
-On a card, PYNQ 3.0.1 is the last release that drives Alveo cards (3.1 deprecated them). Its XRT backend binds XRT's `xcl*` C functions, which recent XRT releases (2.23 checked) no longer export, so newer XRT needs a port of `pynq.pl_server.xrt_device` to the XRT native API (`xrt::bo`, `xrt::ip`). Only Verilator is tested.
+On a card, PYNQ 3.0.1 is the last release that drives Alveo cards (3.1 deprecated them). Its XRT backend binds XRT's `xcl*` C functions, which recent XRT releases (2.23 checked) no longer export, so newer XRT needs a port of `pynq.pl_server.xrt_device` to the XRT native API (`xrt::bo`, `xrt::ip`): [watcag/PYNQ `xrt-native`](https://github.com/watcag/PYNQ/tree/xrt-native), `pip install "git+https://github.com/watcag/PYNQ@xrt-native"`. Only Verilator is tested.
 
 ## Partial-reconfiguration simulation
 `examples/cocotbpynq/` contains six PR designs (AXI-Lite, dual DMA, stream, AXI-Stream switch, matmul pipeline, video pipeline). Each one describes the static region and reconfigurable modules in `pr_config.yaml` and runs an unmodified PYNQ-style test (`test_pynq.py`) that calls `overlay.pr_download(...)` to swap modules mid-simulation:
