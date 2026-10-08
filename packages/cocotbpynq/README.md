@@ -57,6 +57,57 @@ cd examples/cocotbpynq/axi_pr_example && python run.py
 
 For the full Vivado DFX flow (block design, floorplanning, partial bitstreams, board runtime) from a single YAML file, see [pynq-pr](https://github.com/watcag/cocotbpynq/tree/main/packages/pynq-pr).
 
+A partition whose RM has AXI-Stream pairs `x`/`y`, `x1`/`y1`, ... can have one DMA per pair: give each
+DMA's `sb` interfaces `partition: <name>`, and the partition's k-th DMA (in interface order) drives `x<k>`/`y<k>`.
+
+### Netlist co-simulation
+An RM can be simulated from its Vivado netlist instead of its RTL, under the same static region and host
+test. This catches synthesis or implementation that changes what the RM computes, which RTL simulation
+cannot. Export the netlist with `write_verilog -mode funcsim`, from the routed design (the RM's cell) or
+from the RM's own synthesis checkpoint (its top):
+
+```tcl
+open_checkpoint top_routed.dcp
+write_verilog -mode funcsim -force -cell [get_cells <RM cell>] rm_funcsim.v
+```
+
+and point the RM's entry in `reconfigurable_modules` at it (`design` is the netlist's top module). Two
+simulators can run it:
+
+- **Vivado simulator** (Vivado's own UNISIM and SecureIP models), from the Vivado that builds the design
+  (e.g. 2022.2 for PYNQ 3.0, 2024.x for PYNQ 3.1) with `settings64.sh` sourced. The RM is built with
+  `xvlog`/`xelab -dll` and driven through XSI:
+
+  ```yaml
+  - name: my_rm_netlist
+    partition: rp0
+    design: my_rm
+    sources: [rm_funcsim.v]
+    simulator: xsim
+  ```
+
+- **Verilator**, with the Verilator-compatible primitive models of
+  [verilator-unisims](https://github.com/watcag/verilator-unisims)
+  (`git clone https://github.com/watcag/verilator-unisims`). `-DGLBL` skips the netlist's own
+  `glbl`, and `verilator_public: false` leaves out `--public-flat-rw`, which would keep every net of a
+  large netlist out of the optimiser:
+
+  ```yaml
+  - name: my_rm_netlist
+    partition: rp0
+    design: my_rm
+    sources: [rm_funcsim.v]
+    verilator_public: false
+    verilator_flags: [-y, /path/to/verilator-unisims, -DGLBL, --no-timing, -Wno-fatal, -Wno-lint, -Wno-style,
+                      -O3, --output-split-cfuncs, "2000"]
+  ```
+
+  The models must cover every primitive in the netlist.
+
+Both run at the same cycle level as the RTL RM. Verilator is about 100 times faster once built; xsim
+needs no extra models. Neither simulates timing: the netlist is functional (funcsim), so a design that
+fails timing can still pass.
+
 `PRCocotbRunner(merge_waveforms=True)` is experimental and requires the unreleased `ewal` waveform tool; it is off by default.
 
 ## Versions and reproducing the papers

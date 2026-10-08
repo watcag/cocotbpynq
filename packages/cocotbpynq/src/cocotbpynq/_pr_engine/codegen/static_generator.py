@@ -9,6 +9,7 @@ Supports:
 from pathlib import Path
 from typing import Dict, List, Any
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,11 @@ _FULL_AXI_WIRED_TO_RM = {
     's_axi_AXILiteS_RREADY',
     's_axi_AXILiteS_BREADY',
 }
+
+
+def _stream0_name(name: str) -> str:
+    """x1_TDATA -> x_TDATA: stream k of a partition uses the stream-0 rules."""
+    return re.sub(r'^([xy])\d+_', r'\1_', name)
 
 
 def _find_port(boundary: List[Dict[str, Any]], name: str, direction: str = None):
@@ -194,21 +200,26 @@ def generate_static_region(
                 dma_instances.append(inst)
                 seen.add(inst)
 
-        # Find send/recv interface names for this partition's DMA
-        dma_in = None
-        dma_out = None
-        dma_in_def = None
-        dma_out_def = None
-        if idx < len(dma_instances):
-            target_dma = dma_instances[idx]
+        # This partition's DMAs: those whose interfaces name it ('partition'), in order,
+        # else the idx-th DMA.  DMA k drives the RM's x<k>/y<k> (x/y for k = 0).
+        part_dmas = [i for i in dma_instances
+                     if any(d.get('dma_instance') == i and d.get('partition') == part_cfg['name'] for _, d in sb_ifaces)]
+        if not part_dmas and idx < len(dma_instances):
+            part_dmas = [dma_instances[idx]]
+        streams = []
+        for k, target_dma in enumerate(part_dmas):
+            s = {'tag': f'{idx}' if k == 0 else f'{idx}s{k}', 'x': 'x' if k == 0 else f'x{k}',
+                 'y': 'y' if k == 0 else f'y{k}', 'dma_in': None, 'dma_out': None}
             for n, d in sb_ifaces:
                 if d.get('dma_instance') == target_dma:
                     if d.get('direction') in ('subordinate', 'input'):
-                        dma_in = n
-                        dma_in_def = d
+                        s['dma_in'], s['dma_in_def'] = n, d
                     elif d.get('direction') in ('manager', 'output'):
-                        dma_out = n
-                        dma_out_def = d
+                        s['dma_out'], s['dma_out_def'] = n, d
+            streams.append(s)
+        s0 = streams[0] if streams else {}
+        dma_in, dma_out = s0.get('dma_in'), s0.get('dma_out')
+        dma_in_def, dma_out_def = s0.get('dma_in_def'), s0.get('dma_out_def')
 
         axil_iface = None
         for n, d in axil_ifaces:
@@ -242,6 +253,7 @@ def generate_static_region(
             'axil_iface': axil_iface,
             'axil_prefix': _iface_port_prefix(*axil_iface) if axil_iface else None,
             'idx': idx,
+            'streams': streams[1:],
         })
 
     num_ports = 2 * len(parts)
@@ -278,16 +290,19 @@ def generate_static_region(
     a(f"")
     for pi, p in enumerate(parts):
         dw = p['dw']
-        a(f"    // DMA{pi} ({p['name']})")
-        a(f"    input  wire [{dw-1}:0] {p['dma_in']}_tdata,")
-        a(f"    input  wire        {p['dma_in']}_tvalid,")
-        a(f"    output wire        {p['dma_in']}_tready,")
-        a(f"    input  wire        {p['dma_in']}_tlast,")
-        a(f"    output wire [{dw-1}:0] {p['dma_out']}_tdata,")
-        a(f"    output wire        {p['dma_out']}_tvalid,")
-        a(f"    input  wire        {p['dma_out']}_tready,")
-        comma = "," if pi < len(parts) - 1 else ""
-        a(f"    output wire        {p['dma_out']}_tlast{comma}")
+        dmas = [(p['dma_in'], p['dma_out'], f"DMA{pi} ({p['name']})")] + [
+            (s['dma_in'], s['dma_out'], f"DMA{pi} stream {s['x']}/{s['y']} ({p['name']})") for s in p['streams']]
+        for k, (din, dout, label) in enumerate(dmas):
+            a(f"    // {label}")
+            a(f"    input  wire [{dw-1}:0] {din}_tdata,")
+            a(f"    input  wire        {din}_tvalid,")
+            a(f"    output wire        {din}_tready,")
+            a(f"    input  wire        {din}_tlast,")
+            a(f"    output wire [{dw-1}:0] {dout}_tdata,")
+            a(f"    output wire        {dout}_tvalid,")
+            a(f"    input  wire        {dout}_tready,")
+            comma = "," if k < len(dmas) - 1 or pi < len(parts) - 1 else ""
+            a(f"    output wire        {dout}_tlast{comma}")
         if pi < len(parts) - 1:
             a(f"")
 
@@ -300,7 +315,7 @@ def generate_static_region(
         for port in p['to_rm']:
             w = port.get('width', 32)
             decl = "reg "
-            if p['full_axi_boundary'] and port['name'] in _FULL_AXI_WIRED_TO_RM:
+            if p['full_axi_boundary'] and _stream0_name(port['name']) in _FULL_AXI_WIRED_TO_RM:
                 decl = "wire"
             a(f"    {decl:4s} [{w-1}:0] {p['prefix']}_{port['name']};")
         for port in p['from_rm']:
@@ -405,80 +420,86 @@ def generate_static_region(
         rst_guard = reset_name if reset_name else "1'b1"
 
         if p['full_axi_boundary']:
-            a(f"    // AXI adapter {pi} ({p['name']})")
-            a(f"    reg [{p['dw']-1}:0] inq{pi}_data [0:1];")
-            a(f"    reg                  inq{pi}_last [0:1];")
-            a(f"    reg                  inq{pi}_rd, inq{pi}_wr;")
-            a(f"    reg [1:0]            inq{pi}_count;")
-            a(f"    reg [{p['dw']-1}:0] outq{pi}_data [0:1];")
-            a(f"    reg                  outq{pi}_last [0:1];")
-            a(f"    reg                  outq{pi}_rd, outq{pi}_wr;")
-            a(f"    reg [1:0]            outq{pi}_count;")
-            a(f"    wire                 inq{pi}_push = {in_pre}_tvalid & {in_pre}_tready;")
-            a(f"    wire                 inq{pi}_pop = (inq{pi}_count != 0) & {p['prefix']}_x_TREADY;")
-            a(f"    wire                 outq{pi}_push = {p['prefix']}_y_TVALID & {p['prefix']}_y_TREADY;")
-            a(f"    wire                 outq{pi}_pop = (outq{pi}_count != 0) & {out_pre}_tready;")
-            a(f"")
-            a(f"    assign {in_pre}_tready  = (inq{pi}_count != 2) & {rst_guard};")
-            a(f"    assign {out_pre}_tdata  = (outq{pi}_count != 0) ? outq{pi}_data[outq{pi}_rd] : {p['dw']}'d0;")
-            a(f"    assign {out_pre}_tvalid = (outq{pi}_count != 0);")
-            a(f"    assign {out_pre}_tlast  = (outq{pi}_count != 0) ? outq{pi}_last[outq{pi}_rd] : 1'b0;")
-            if _find_port(p['to_rm'], 'rst_n', 'to_rm'):
-                a(f"    assign {p['prefix']}_rst_n = {rst_guard};")
-            if _find_port(p['to_rm'], 'x_TDATA', 'to_rm'):
-                a(f"    assign {p['prefix']}_x_TDATA = (inq{pi}_count != 0) ? inq{pi}_data[inq{pi}_rd] : {p['dw']}'d0;")
-            if _find_port(p['to_rm'], 'x_TVALID', 'to_rm'):
-                a(f"    assign {p['prefix']}_x_TVALID = (inq{pi}_count != 0);")
-            if _find_port(p['to_rm'], 'x_TLAST', 'to_rm'):
-                a(f"    assign {p['prefix']}_x_TLAST = (inq{pi}_count != 0) ? inq{pi}_last[inq{pi}_rd] : 1'b0;")
-            if _find_port(p['to_rm'], 'y_TREADY', 'to_rm'):
-                a(f"    assign {p['prefix']}_y_TREADY = (outq{pi}_count != 2);")
-            if p['axil_prefix']:
-                _emit_axilite_connections(a, p['prefix'], p['axil_prefix'], p['to_rm'], p['from_rm'], "    ")
-            else:
-                _emit_axilite_assigns(a, p['prefix'], p['to_rm'], "    ")
-            a(f"")
-            a(f"    always @(posedge {clock_name}) begin")
-            a(f"        if ({rst_cond}) begin")
-            a(f"            inq{pi}_rd <= 0; inq{pi}_wr <= 0; inq{pi}_count <= 0;")
-            a(f"            outq{pi}_rd <= 0; outq{pi}_wr <= 0; outq{pi}_count <= 0;")
-            a(f"            inq{pi}_data[0] <= 0; inq{pi}_data[1] <= 0;")
-            a(f"            inq{pi}_last[0] <= 0; inq{pi}_last[1] <= 0;")
-            a(f"            outq{pi}_data[0] <= 0; outq{pi}_data[1] <= 0;")
-            a(f"            outq{pi}_last[0] <= 0; outq{pi}_last[1] <= 0;")
-            a(f"        end else begin")
-            a(f"            if (inq{pi}_push) begin")
-            a(f"                inq{pi}_data[inq{pi}_wr] <= {in_pre}_tdata;")
-            a(f"                inq{pi}_last[inq{pi}_wr] <= {in_pre}_tlast;")
-            a(f"                inq{pi}_wr <= ~inq{pi}_wr;")
-            a(f"            end")
-            a(f"            if (inq{pi}_pop) begin")
-            a(f"                inq{pi}_rd <= ~inq{pi}_rd;")
-            a(f"            end")
-            a(f"            case ({{inq{pi}_push, inq{pi}_pop}})")
-            a(f"                2'b10: inq{pi}_count <= inq{pi}_count + 1'b1;")
-            a(f"                2'b01: inq{pi}_count <= inq{pi}_count - 1'b1;")
-            a(f"                default: inq{pi}_count <= inq{pi}_count;")
-            a(f"            endcase")
-            a(f"")
-            a(f"            if (outq{pi}_push) begin")
-            a(f"                outq{pi}_data[outq{pi}_wr] <= {p['prefix']}_y_TDATA;")
-            if _find_port(p['from_rm'], 'y_TLAST', 'from_rm'):
-                a(f"                outq{pi}_last[outq{pi}_wr] <= {p['prefix']}_y_TLAST;")
-            else:
-                a(f"                outq{pi}_last[outq{pi}_wr] <= 1'b0;")
-            a(f"                outq{pi}_wr <= ~outq{pi}_wr;")
-            a(f"            end")
-            a(f"            if (outq{pi}_pop) begin")
-            a(f"                outq{pi}_rd <= ~outq{pi}_rd;")
-            a(f"            end")
-            a(f"            case ({{outq{pi}_push, outq{pi}_pop}})")
-            a(f"                2'b10: outq{pi}_count <= outq{pi}_count + 1'b1;")
-            a(f"                2'b01: outq{pi}_count <= outq{pi}_count - 1'b1;")
-            a(f"                default: outq{pi}_count <= outq{pi}_count;")
-            a(f"            endcase")
-            a(f"        end")
-            a(f"    end")
+            # one adapter per stream: x/y with the partition's first DMA, x<k>/y<k> with its k-th
+            for tag, in_pre, out_pre, xs, ys in [(pi, in_pre, out_pre, 'x', 'y')] + [
+                    (s['tag'], s['dma_in'], s['dma_out'], s['x'], s['y']) for s in p['streams']]:
+                first = xs == 'x'
+                a(f"    // AXI adapter {tag} ({p['name']})")
+                a(f"    reg [{p['dw']-1}:0] inq{tag}_data [0:1];")
+                a(f"    reg                  inq{tag}_last [0:1];")
+                a(f"    reg                  inq{tag}_rd, inq{tag}_wr;")
+                a(f"    reg [1:0]            inq{tag}_count;")
+                # The DPI boundary delivers each side's signals a cycle late, so a
+                # stream handshake cannot span it.  Beats cross as one-cycle TVALID
+                # pulses; TREADY across the boundary is a credit (room for the beats
+                # in flight), and the RM-side wrapper does the RM's real handshake.
+                a(f"    reg [{p['dw']-1}:0] outq{tag}_data [0:15];")
+                a(f"    reg                  outq{tag}_last [0:15];")
+                a(f"    reg [3:0]            outq{tag}_rd, outq{tag}_wr;")
+                a(f"    reg [4:0]            outq{tag}_count;")
+                a(f"    wire                 inq{tag}_push = {in_pre}_tvalid & {in_pre}_tready;")
+                a(f"    wire                 inq{tag}_pop = (inq{tag}_count != 0) & {p['prefix']}_{xs}_TREADY;")
+                a(f"    wire                 outq{tag}_push = {p['prefix']}_{ys}_TVALID;")
+                a(f"    wire                 outq{tag}_pop = (outq{tag}_count != 0) & {out_pre}_tready;")
+                a(f"")
+                a(f"    assign {in_pre}_tready  = (inq{tag}_count != 2) & {rst_guard};")
+                a(f"    assign {out_pre}_tdata  = (outq{tag}_count != 0) ? outq{tag}_data[outq{tag}_rd] : {p['dw']}'d0;")
+                a(f"    assign {out_pre}_tvalid = (outq{tag}_count != 0);")
+                a(f"    assign {out_pre}_tlast  = (outq{tag}_count != 0) ? outq{tag}_last[outq{tag}_rd] : 1'b0;")
+                if first and _find_port(p['to_rm'], 'rst_n', 'to_rm'):
+                    a(f"    assign {p['prefix']}_rst_n = {rst_guard};")
+                if _find_port(p['to_rm'], f'{xs}_TDATA', 'to_rm'):
+                    a(f"    assign {p['prefix']}_{xs}_TDATA = (inq{tag}_count != 0) ? inq{tag}_data[inq{tag}_rd] : {p['dw']}'d0;")
+                if _find_port(p['to_rm'], f'{xs}_TVALID', 'to_rm'):
+                    a(f"    assign {p['prefix']}_{xs}_TVALID = inq{tag}_pop;")
+                if _find_port(p['to_rm'], f'{xs}_TLAST', 'to_rm'):
+                    a(f"    assign {p['prefix']}_{xs}_TLAST = (inq{tag}_count != 0) ? inq{tag}_last[inq{tag}_rd] : 1'b0;")
+                if _find_port(p['to_rm'], f'{ys}_TREADY', 'to_rm'):
+                    a(f"    assign {p['prefix']}_{ys}_TREADY = (outq{tag}_count <= 8);")
+                if first and p['axil_prefix']:
+                    _emit_axilite_connections(a, p['prefix'], p['axil_prefix'], p['to_rm'], p['from_rm'], "    ")
+                elif first:
+                    _emit_axilite_assigns(a, p['prefix'], p['to_rm'], "    ")
+                a(f"")
+                a(f"    always @(posedge {clock_name}) begin")
+                a(f"        if ({rst_cond}) begin")
+                a(f"            inq{tag}_rd <= 0; inq{tag}_wr <= 0; inq{tag}_count <= 0;")
+                a(f"            outq{tag}_rd <= 0; outq{tag}_wr <= 0; outq{tag}_count <= 0;")
+                a(f"            inq{tag}_data[0] <= 0; inq{tag}_data[1] <= 0;")
+                a(f"            inq{tag}_last[0] <= 0; inq{tag}_last[1] <= 0;")
+                a(f"        end else begin")
+                a(f"            if (inq{tag}_push) begin")
+                a(f"                inq{tag}_data[inq{tag}_wr] <= {in_pre}_tdata;")
+                a(f"                inq{tag}_last[inq{tag}_wr] <= {in_pre}_tlast;")
+                a(f"                inq{tag}_wr <= ~inq{tag}_wr;")
+                a(f"            end")
+                a(f"            if (inq{tag}_pop) begin")
+                a(f"                inq{tag}_rd <= ~inq{tag}_rd;")
+                a(f"            end")
+                a(f"            case ({{inq{tag}_push, inq{tag}_pop}})")
+                a(f"                2'b10: inq{tag}_count <= inq{tag}_count + 1'b1;")
+                a(f"                2'b01: inq{tag}_count <= inq{tag}_count - 1'b1;")
+                a(f"                default: inq{tag}_count <= inq{tag}_count;")
+                a(f"            endcase")
+                a(f"")
+                a(f"            if (outq{tag}_push) begin")
+                a(f"                outq{tag}_data[outq{tag}_wr] <= {p['prefix']}_{ys}_TDATA;")
+                if _find_port(p['from_rm'], f'{ys}_TLAST', 'from_rm'):
+                    a(f"                outq{tag}_last[outq{tag}_wr] <= {p['prefix']}_{ys}_TLAST;")
+                else:
+                    a(f"                outq{tag}_last[outq{tag}_wr] <= 1'b0;")
+                a(f"                outq{tag}_wr <= outq{tag}_wr + 1'b1;")
+                a(f"            end")
+                a(f"            if (outq{tag}_pop) begin")
+                a(f"                outq{tag}_rd <= outq{tag}_rd + 1'b1;")
+                a(f"            end")
+                a(f"            case ({{outq{tag}_push, outq{tag}_pop}})")
+                a(f"                2'b10: outq{tag}_count <= outq{tag}_count + 1'b1;")
+                a(f"                2'b01: outq{tag}_count <= outq{tag}_count - 1'b1;")
+                a(f"                default: outq{tag}_count <= outq{tag}_count;")
+                a(f"            endcase")
+                a(f"        end")
+                a(f"    end")
         else:
             a(f"    // FSM {pi} ({p['name']})")
             a(f"    reg [1:0] st{pi};  reg [3:0] wc{pi};  reg last{pi};")

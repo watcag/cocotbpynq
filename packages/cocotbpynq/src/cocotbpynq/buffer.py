@@ -17,5 +17,55 @@
 
 import numpy
 
-def allocate(shape, dtype="u4", target=None, **kwargs):
-    return numpy.ndarray(shape, dtype=dtype, **kwargs)
+_next_address = 0x10000000
+
+
+class PynqBuffer(numpy.ndarray):
+    """pynq.buffer.PynqBuffer in simulation, with a write-back cache model.
+
+    The array is what the CPU sees; ``_dram`` is DRAM as the DMA sees it.
+    For a cacheable buffer, ``flush()`` writes the CPU view to DRAM and
+    ``invalidate()`` reloads it from DRAM, so a host that skips either sees
+    stale data as it would on the board.  A non-cacheable buffer is one array.
+    """
+
+    def __array_finalize__(self, obj):
+        self._dram = None                     # views and copies are plain CPU memory
+        self.cacheable = False
+        self.physical_address = 0
+
+    def flush(self):
+        if self._dram is not None and self._dram is not self:
+            self._dram[...] = self
+
+    def invalidate(self):
+        if self._dram is not None and self._dram is not self:
+            self[...] = self._dram
+
+    def sync_to_device(self):
+        self.flush()
+
+    def sync_from_device(self):
+        self.invalidate()
+
+    def freebuffer(self):
+        pass
+
+    def close(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
+def allocate(shape, dtype="u4", target=None, cacheable=True, **kwargs):
+    global _next_address
+    buf = numpy.zeros(shape, dtype=dtype).view(PynqBuffer)
+    buf.cacheable = cacheable
+    buf._dram = numpy.zeros(shape, dtype=dtype) if cacheable else buf
+    buf.physical_address = _next_address
+    _next_address += (buf.nbytes + 0xFFF) & ~0xFFF
+    return buf

@@ -169,31 +169,26 @@ class MMIO():
         None
 
         """
-        # Assert address
+        # Address and data together: an AXI master must not wait for AWREADY
+        # before asserting WVALID, and a slave may wait for both valids.
         self.cpbus.AWADDR.value = offset
         self.cpbus.AWVALID.value = 0b1
-        await ReadOnly()
-        periph_addr_ready = self.cpbus.AWREADY.value
-        while(periph_addr_ready == 0b0):
-            await RisingEdge(self.cpdut.clk)
-            await ReadOnly()
-            periph_addr_ready = self.cpbus.AWREADY.value
-        await RisingEdge(self.cpdut.clk)
-        self.cpbus.AWVALID.value = 0b0
-
-        # Send Data
-        self.cpbus.WVALID.value = 0b1
         self.cpbus.WDATA.value = data
         self.cpbus.WSTRB.value = 0xF
-        await ReadOnly()
-        periph_data_ready = self.cpbus.WREADY.value
-        while(periph_data_ready == 0b0):
-            await RisingEdge(self.cpdut.clk)
+        self.cpbus.WVALID.value = 0b1
+        aw_done = w_done = False
+        while not (aw_done and w_done):
             await ReadOnly()
-            periph_data_ready = self.cpbus.WREADY.value
-        await RisingEdge(self.cpdut.clk)
-        self.cpbus.WVALID.value = 0b0
-        self.cpbus.WSTRB.value = 0x0
+            aw_fire = not aw_done and self.cpbus.AWREADY.value == 0b1
+            w_fire = not w_done and self.cpbus.WREADY.value == 0b1
+            await RisingEdge(self.cpdut.clk)
+            if aw_fire:
+                aw_done = True
+                self.cpbus.AWVALID.value = 0b0
+            if w_fire:
+                w_done = True
+                self.cpbus.WVALID.value = 0b0
+                self.cpbus.WSTRB.value = 0x0
 
         # Accept response back
         self.cpbus.BREADY.value = 0b1
