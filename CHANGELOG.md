@@ -2,6 +2,16 @@
 
 Both packages (cocotbpynq and pynq-pr) are released together under one version from 0.2.0 onwards.
 
+## Unreleased
+
+### Added
+- `cocotbpynq.xrt`: PYNQ host code for Alveo cards (`Overlay("design.xclbin")`, `allocate(..., target=ol.HBM0)`,
+  `ol.<cu>.call/start/read/write`) runs against the RTL of the design's compute units. `make_top` writes the
+  simulation top from the xclbin's metadata (AXI4-Stream connections wired, control and AXI4 master ports
+  brought out); the overlay serves AXI4 masters from a model of the card's memory banks and drives each CU's
+  AXI-Lite control port. `write_xclbin` writes a metadata-only xclbin to simulate before linking. Example:
+  `examples/cocotbpynq/alveo_example`.
+
 ## 0.2.0 (2026-10-06)
 
 ### Changed
