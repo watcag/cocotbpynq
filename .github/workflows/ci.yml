@@ -85,6 +85,8 @@ jobs:
           for e in ${{ matrix.cocotbpynq_examples }}; do
             echo "::group::$e"; (cd "examples/cocotbpynq/${e}_pr_example" && timeout 300 python run.py); echo "::endgroup::"
           done
+      - name: cocotbpynq Alveo (XRT) example
+        run: cd examples/cocotbpynq/alveo_example && timeout 300 python run.py
       - name: pynq-pr validate (all example configs)
         run: |
           set -e
