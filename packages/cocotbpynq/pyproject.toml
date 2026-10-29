@@ -19,7 +19,7 @@ requires-python = ">=3.10"
 dependencies = [
     "numpy",
     "cocotb>=2.0.1,<3",
-    "pyslang>=10",
+    "pyslang>=11",
     "pyyaml",
     "jinja2",
 ]

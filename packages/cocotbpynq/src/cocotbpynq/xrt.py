@@ -97,7 +97,11 @@ def write_xclbin(path, xml, mems, connections):
     root = ElementTree.fromstring(xml)
     ips, args = [], {}
     for kernel in root.iter("kernel"):
-        control = {v: k for k, v in _CONTROL.items()}[kernel.get("hwControlProtocol", "ap_ctrl_hs")]
+        # XO metadata calls a register-only CU user_managed; IP_LAYOUT uses
+        # the same AP_CTRL_NONE encoding. Preserve the original XML spelling.
+        control_codes = {v: k for k, v in _CONTROL.items()}
+        control_codes["user_managed"] = 2
+        control = control_codes[kernel.get("hwControlProtocol", "ap_ctrl_hs")]
         for inst in kernel.iter("instance"):
             args[inst.get("name")] = (len(ips), {a.get("name"): int(a.get("id")) for a in kernel.iter("arg")})
             ips.append(struct.pack("<IIQ64s", 1, control << 8, int(inst.find("addrRemap").get("base"), 0),
