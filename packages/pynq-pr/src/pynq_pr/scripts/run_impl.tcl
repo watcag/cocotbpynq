@@ -1,5 +1,15 @@
 # Synthesis, implementation, and bitstream generation for N partitions.
 
+# Versal writes programmable device images (.pdi): the static one boots the board, the partial ones
+# are loaded by the PMC. Zynq writes bitstreams.
+if { $family eq "versal" } {
+    set write_step write_device_image
+    set image_ext pdi
+} else {
+    set write_step write_bitstream
+    set image_ext bit
+}
+
 # Register all RM block designs with their partition containers
 foreach part_config $partition_configs {
     set pname [dict get $part_config partition_name]
@@ -63,16 +73,16 @@ set_property NAME impl_base [get_runs impl_1]
 set_property PR_CONFIGURATION config_base [get_runs impl_base]
 
 foreach vc $variant_configs {
-    create_run impl_${vc} -parent_run impl_base -flow {Vivado Implementation 2022} -pr_config config_${vc}
+    create_run impl_${vc} -parent_run impl_base -flow [get_property FLOW [get_runs impl_base]] -pr_config config_${vc}
 }
 
-launch_runs synth_1 -jobs 16
+launch_runs synth_1 -jobs $jobs
 wait_on_runs synth_1
-launch_runs impl_base -to_step write_bitstream -jobs 16
+launch_runs impl_base -to_step $write_step -jobs $jobs
 wait_on_run impl_base
 
 foreach vc $variant_configs {
-    launch_runs impl_${vc} -to_step write_bitstream -jobs 16
+    launch_runs impl_${vc} -to_step $write_step -jobs $jobs
     wait_on_run impl_${vc}
 }
 
@@ -82,7 +92,7 @@ set gen_bd_dir [file join $proj_dir ${project_name}.gen sources_1 bd $design_nam
 set base_impl_dir [get_property DIRECTORY [get_runs impl_base]]
 
 # Static bitstream and hwh
-file copy -force [file join $base_impl_dir ${design_name}_wrapper.bit] [file join $bits_dir ${project_name}.bit]
+file copy -force [file join $base_impl_dir ${design_name}_wrapper.$image_ext] [file join $bits_dir ${project_name}.$image_ext]
 file copy -force [file join $gen_bd_dir hw_handoff ${design_name}.hwh] [file join $bits_dir ${project_name}.hwh]
 
 # First RM partials from base run
@@ -91,8 +101,8 @@ foreach part_config $partition_configs {
     set first_cn [dict get [lindex [dict get $part_config modules] 0] cell_name]
 
     file copy -force \
-        [file join $base_impl_dir ${design_name}_i_${pname}_rp_${pname}_${first_cn}_inst_0_partial.bit] \
-        [file join $bits_dir ${pname}_${first_cn}.bit]
+        [file join $base_impl_dir ${design_name}_i_${pname}_rp_${pname}_${first_cn}_inst_0_partial.$image_ext] \
+        [file join $bits_dir ${pname}_${first_cn}.$image_ext]
     file copy -force \
         [file join $gen_bd_dir bd ${pname}_${first_cn}_inst_0 hw_handoff ${pname}_${first_cn}_inst_0.hwh] \
         [file join $bits_dir ${pname}_${first_cn}.hwh]
@@ -109,8 +119,8 @@ foreach part_config $partition_configs {
         set impl_dir [get_property DIRECTORY [get_runs impl_${vc}]]
 
         file copy -force \
-            [file join $impl_dir ${design_name}_i_${pname}_rp_${pname}_${cn}_inst_0_partial.bit] \
-            [file join $bits_dir ${pname}_${cn}.bit]
+            [file join $impl_dir ${design_name}_i_${pname}_rp_${pname}_${cn}_inst_0_partial.$image_ext] \
+            [file join $bits_dir ${pname}_${cn}.$image_ext]
         file copy -force \
             [file join $gen_bd_dir bd ${pname}_${cn}_inst_0 hw_handoff ${pname}_${cn}_inst_0.hwh] \
             [file join $bits_dir ${pname}_${cn}.hwh]

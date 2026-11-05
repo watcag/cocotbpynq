@@ -1,4 +1,5 @@
-# Wrap each partition's dummy into a BDC and replace with the first RM.
+# Wrap each partition's dummy (and, with the NoC interconnect, its NoC input: $rm_cells from
+# create_bd.tcl) into a BDC and replace it with the first RM.
 current_bd_design $design_name
 current_bd_instance /
 
@@ -13,7 +14,7 @@ foreach part_config $partition_configs {
     current_bd_design $design_name
     current_bd_instance /${pname}
 
-    group_bd_cells dummy_hier [get_bd_cells dummy]
+    group_bd_cells dummy_hier [get_bd_cells $rm_cells]
 
     current_bd_instance /
     validate_bd_design
@@ -39,11 +40,8 @@ foreach part_config $partition_configs {
 
     current_bd_design [get_bd_designs ${pname}_${first_rm_name}]
 
-    delete_bd_objs [get_bd_cells dummy]
-    set cell [create_bd_cell -type module -reference $first_rm_top $first_rm_top]
-
-    utils::apply_rm_params $cell $first_rm_params
-    utils::connect_rm_ports $first_rm_top
+    delete_bd_objs [get_bd_cells *]
+    utils::populate_rm $first_rm_top $first_rm_params
 
     validate_bd_design
     save_bd_design

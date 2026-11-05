@@ -13,10 +13,7 @@ foreach part_config $partition_configs {
         current_bd_design [get_bd_designs $design_name]
         create_bd_design -boundary_from_container [get_bd_cells /${pname}/rp] ${pname}_${rm_cell_name}
 
-        set cell [create_bd_cell -type module -reference $rm_top $rm_top]
-
-        utils::apply_rm_params $cell $rm_params
-        utils::connect_rm_ports $rm_top
+        utils::populate_rm $rm_top $rm_params
 
         validate_bd_design
         save_bd_design

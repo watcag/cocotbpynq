@@ -1,6 +1,9 @@
 import yaml
 from pathlib import Path
 
+from .boards import load_board
+from .floorplan import partition_groups
+
 VALID_RECONFIG_METHODS = ("pcap", "icap")
 PKG_DIR = Path(__file__).parent
 
@@ -56,11 +59,50 @@ def validate(config, root_dir):
         if not (root_dir / src).exists():
             raise FileNotFoundError(f"Source not found: {root_dir / src}")
 
+    board = load_board(config["board"])
+    if method == "icap" and not board["icap_primitive"]:
+        raise ValueError(
+            f"Board '{config['board']}' has no ICAP; use reconfiguration_method: pcap "
+            "(on Versal the PMC loads every partial image)"
+        )
+    if "layouts" in board and len(partitions) not in board["layouts"]:
+        raise ValueError(
+            f"Board '{config['board']}' supports {sorted(board['layouts'])} partitions, "
+            f"got {len(partitions)}"
+        )
+    if config.get("noc_interconnect"):
+        validate_noc(config, board, len(partitions))
+
+
+def validate_noc(config, board, n):
+    """The NoC interconnect needs a Versal board and enough NoC endpoints (NMU/NSU pairs).
+
+    Sources: 2n static NMUs (each partition's output, each DMA's MM2S) plus the DDR port. NMU sites
+    are never in a pblock. Destinations: one NSU in each partition and n static NSUs (the DMAs'
+    S2MM) outside every partition, since a pblock takes the NSU sites of its clock regions.
+    """
+    if board["family"] != "versal":
+        raise ValueError("noc_interconnect needs a Versal board (the NoC)")
+    if config.get("axis_switch"):
+        raise ValueError("noc_interconnect replaces axis_switch; set only one of them")
+    noc = {r: c.get("NOC", 0) for r, c in board["clock_regions"].items()}
+    groups = partition_groups(board, n)
+    too_few = f"noc_interconnect: {n} partitions on '{config['board']}' need"
+    for group in groups:
+        if not sum(noc[r] for r in group):
+            raise ValueError(f"{too_few} a NoC endpoint in every partition; {group} has none")
+    static_nsu = sum(noc.values()) - sum(noc[r] for g in groups for r in g)
+    if static_nsu < n:
+        raise ValueError(f"{too_few} {n} NSUs outside the partitions, the board has {static_nsu}")
+    if sum(noc.values()) < 2 * n + 1:
+        raise ValueError(f"{too_few} {2 * n + 1} NMUs, the board has {sum(noc.values())}")
+
 
 def apply_defaults(config, root_dir):
     method = config.get("reconfiguration_method", "pcap")
     config["reconfiguration_method"] = method
     config.setdefault("axis_switch", False)
+    config.setdefault("noc_interconnect", False)
     config.setdefault("_versatile_freq", 100)  # ICAP runs at 2x this frequency
     config.setdefault("_data_freq", 100)
 
@@ -69,3 +111,6 @@ def apply_defaults(config, root_dir):
         config["sources"] = []
     if dummy_path not in config["sources"]:
         config["sources"].append(dummy_path)
+    noc_path = str(PKG_DIR / "rtl" / "noc_stream.v")
+    if config["noc_interconnect"] and noc_path not in config["sources"]:
+        config["sources"].append(noc_path)

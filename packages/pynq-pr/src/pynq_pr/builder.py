@@ -16,7 +16,7 @@ from .boards import load_board
 from .floorplan import write_pblocks_xdc
 
 
-def generate_tcl_config(config, board, root_dir, proj_dir, bits_dir, pblocks_xdc):
+def generate_tcl_config(config, board, root_dir, proj_dir, bits_dir, pblocks_xdc, jobs):
     """Generate build_config.tcl content from the parsed YAML config."""
     lines = []
 
@@ -28,10 +28,14 @@ def generate_tcl_config(config, board, root_dir, proj_dir, bits_dir, pblocks_xdc
     tcl_set("part_number", board["part"])
     tcl_set("board_part", board.get("board_part", ""))
     tcl_set("board_name", config["board"])
-    tcl_set("icap_primitive", board["icap_primitive"])
+    tcl_set("family", board["family"])
+    tcl_set("vivado_version", board["vivado"])
+    tcl_set("icap_primitive", board["icap_primitive"] or "")
     tcl_set("axis_switch", "1" if config.get("axis_switch") else "0")
+    tcl_set("noc_interconnect", "1" if config.get("noc_interconnect") else "0")
     tcl_set("versatile_freq", config.get("_versatile_freq", 100))
     tcl_set("data_freq", config.get("_data_freq", 100))
+    tcl_set("jobs", jobs)
     tcl_set("proj_dir", str(proj_dir))
     tcl_set("bits_dir", str(bits_dir))
     tcl_set("pblocks_xdc", str(pblocks_xdc.resolve()))
@@ -90,7 +94,7 @@ def generate_tcl_config(config, board, root_dir, proj_dir, bits_dir, pblocks_xdc
     return "\n".join(lines) + "\n"
 
 
-def build(config_path, force=False):
+def build(config_path, force=False, jobs=16):
     """Load config, generate build_config.tcl, and invoke Vivado."""
     root_dir = Path.cwd()
     config = load_config(config_path)
@@ -112,10 +116,10 @@ def build(config_path, force=False):
 
     pblocks_xdc = write_pblocks_xdc(
         board, config["reconfigurable_partitions"],
-        config["project"], proj_dir,
+        config["project"], proj_dir, noc=config["noc_interconnect"],
     )
 
-    tcl_content = generate_tcl_config(config, board, root_dir, proj_dir, bits_dir, pblocks_xdc)
+    tcl_content = generate_tcl_config(config, board, root_dir, proj_dir, bits_dir, pblocks_xdc, jobs)
     config_tcl_path = proj_dir / "build_config.tcl"
     config_tcl_path.write_text(tcl_content)
 
@@ -145,6 +149,8 @@ def validate_config(config_path):
     print(f"Method:      {config['reconfiguration_method']}")
     if config.get("axis_switch"):
         print(f"RP Switch:   enabled")
+    if config.get("noc_interconnect"):
+        print(f"RP NoC:      enabled")
     print(f"Partitions:  {len(config['reconfigurable_partitions'])}")
     for part in config["reconfigurable_partitions"]:
         print(f"  {part['partition_name']}:")

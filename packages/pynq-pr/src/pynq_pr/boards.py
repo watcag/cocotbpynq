@@ -2,6 +2,8 @@ BOARDS = {
     "z1": {
         "part": "xc7z020clg400-1",
         "board_part": "",
+        "family": "zynq",
+        "vivado": "2022.2",
         "icap_primitive": "ICAPE2",  # Zynq-7000
         "frame_height": 50,
         "clock_regions": {
@@ -19,6 +21,8 @@ BOARDS = {
     "kv260": {
         "part": "xck26-sfvc784-2LV-c",
         "board_part": "xilinx.com:kv260_som:part0:1.3",
+        "family": "zynq",
+        "vivado": "2022.2",
         "icap_primitive": "ICAPE3",  # Zynq UltraScale+
         "frame_height": 60,
         "clock_regions": {
@@ -43,6 +47,37 @@ BOARDS = {
             "X2Y0", "X2Y1", "X2Y2", "X2Y3",
         ],
         "pblock_resources": ["SLICE", "DSP", "RAMB", "URAM"],
+    },
+    "vd100": {
+        "part": "xcve2302-sfva784-1LP-e-s",
+        "board_part": "",  # Alinx ships no board files: ps_vd100.tcl and constraints/vd100.xdc
+        "family": "versal",
+        "vivado": "2025.1",
+        "icap_primitive": None,  # Versal has no ICAP: the PMC loads every partial PDI
+        # Fabric clock regions: LUTs, DSP58s and PL NoC endpoints (NMU512/NSU512 pairs). DSPs are
+        # only in column X2, NoC endpoints only in column X1 (one VNoC column), and row Y3 is half
+        # height. X0Y1 holds the PS side of the NoC and no fabric.
+        "clock_regions": {
+            "X0Y2": {"LUT": 21504, "DSP": 0,   "NOC": 0},
+            "X0Y3": {"LUT": 9856,  "DSP": 0,   "NOC": 0},
+            "X1Y1": {"LUT": 14720, "DSP": 0,   "NOC": 2},
+            "X1Y2": {"LUT": 30720, "DSP": 0,   "NOC": 2},
+            "X1Y3": {"LUT": 14080, "DSP": 0,   "NOC": 1},
+            "X2Y1": {"LUT": 23552, "DSP": 184, "NOC": 0},
+            "X2Y2": {"LUT": 24576, "DSP": 192, "NOC": 0},
+            "X2Y3": {"LUT": 11264, "DSP": 88,  "NOC": 0},
+        },
+        # Partitions per partition count, as whole rows so each one gets every resource type and,
+        # for one or two partitions, its own NoC endpoints. X1Y1 always stays static, with the
+        # static design's NoC endpoints (ps_vd100.tcl pins the DDR port there).
+        "layouts": {
+            1: [["X0Y2", "X1Y2", "X2Y2", "X0Y3", "X1Y3", "X2Y3"]],
+            2: [["X0Y2", "X1Y2", "X2Y2"], ["X0Y3", "X1Y3", "X2Y3"]],
+            3: [["X0Y2", "X1Y2", "X2Y2"], ["X0Y3", "X1Y3", "X2Y3"], ["X2Y1"]],
+        },
+        # IRI_QUAD and BLI sites belong to the same programmable units as the fabric sites; without
+        # them a pblock is not aligned to programmable units (DRC HDPR-147).
+        "pblock_resources": ["SLICE", "DSP", "RAMB", "URAM", "IRI_QUAD", "BLI"],
     },
 }
 

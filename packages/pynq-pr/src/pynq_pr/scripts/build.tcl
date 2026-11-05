@@ -1,6 +1,6 @@
 # build.tcl — Top-level entry point for the pynq-pr Vivado DFX build flow.
 #
-# Invoked by the Python CLI via: vivado -mode tcl -source build.tcl -tclargs build_config.tcl
+# Invoked by the Python CLI via: vivado -mode batch -source build.tcl -tclargs build_config.tcl
 #
 # This script creates a Vivado project, adds RTL sources, sources the
 # user/shipped base block design, then runs the DFX flow in four stages:
@@ -11,12 +11,13 @@
 set config_file [lindex $argv 0]
 source $config_file
 
-# Vivado 2022.1 is known not to work (DFX misbehaves); 2022.2 is the tested version.
-set vivado_version [version -short]
-if { $vivado_version eq "2022.1" } {
-    error "ERROR: Vivado 2022.1 does not work with this flow (DFX issues). Use 2022.2."
-} elseif { $vivado_version ne "2022.2" } {
-    puts "WARNING: pynq-pr is tested with Vivado 2022.2; detected $vivado_version. Continuing."
+# Each board names the Vivado release it is tested with ($vivado_version, from boards.py).
+# Vivado 2022.1 is known not to work (DFX misbehaves).
+set vivado_found [version -short]
+if { $vivado_found eq "2022.1" } {
+    error "ERROR: Vivado 2022.1 does not work with this flow (DFX issues). Use $vivado_version."
+} elseif { $vivado_found ne $vivado_version } {
+    puts "WARNING: pynq-pr is tested with Vivado $vivado_version on $board_name; detected $vivado_found. Continuing."
 }
 
 set script_dir [file dirname [info script]]
@@ -49,7 +50,7 @@ set_property source_mgmt_mode All [current_project]
 update_compile_order -fileset sources_1
 
 source [file join $script_dir create_bd.tcl]
-open_bd_design [get_files *.bd]
+open_bd_design [get_files ${project_name}.bd]
 set design_name [get_property NAME [current_bd_design]]
 
 source [file join $script_dir create_rp_bdc.tcl]
@@ -62,6 +63,12 @@ validate_bd_design
 save_bd_design
 
 add_files -fileset constrs_1 $pblocks_xdc
+
+# Board pins, for boards without a Vivado board file (constraints/<board>.xdc)
+set board_xdc [file join $script_dir .. constraints ${board_name}.xdc]
+if { [file exists $board_xdc] } {
+    add_files -fileset constrs_1 [file normalize $board_xdc]
+}
 
 # if { $reconfiguration_method eq "icap" } {
 #     set constraints_dir [file join $script_dir .. constraints]

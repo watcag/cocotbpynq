@@ -89,9 +89,31 @@ def _find_hamiltonian_path(regions, adj):
     return None
 
 
-def generate_pblocks_xdc(board, partitions, design_name):
-    resources = board["pblock_resources"]
-    n = len(partitions)
+def _layout_groups(board, n):
+    """Clock-region groups from the board's explicit layout for n partitions.
+
+    Boards whose clock regions differ in kind (e.g. Versal, where DSPs and NoC
+    endpoints sit in different columns) list their layouts instead of leaving
+    the split to the resource-blind path algorithm.
+    """
+    layouts = board["layouts"]
+    if n not in layouts:
+        raise ValueError(
+            f"Requested {n} partitions but the board has layouts for "
+            f"{sorted(layouts)} partitions"
+        )
+    groups = [list(g) for g in layouts[n]]
+    for group in groups:
+        adj, _ = _build_adjacency(group)
+        if not _is_connected(group, adj):
+            raise ValueError(f"Layout group {group} is not a connected set of clock regions")
+    return groups
+
+
+def partition_groups(board, n):
+    """The clock regions of each of n partitions: the board's layout, or a split of its path."""
+    if "layouts" in board:
+        return _layout_groups(board, n)
     if n <= 2 and "reconfigurable_regions_lte2" in board:
         regions = list(board["reconfigurable_regions_lte2"])
     else:
@@ -130,7 +152,16 @@ def generate_pblocks_xdc(board, partitions, design_name):
         count = base + (1 if i < extra else 0)
         groups.append(path[idx:idx + count])
         idx += count
+    return groups
 
+
+def generate_pblocks_xdc(board, partitions, design_name, noc=False):
+    """noc: the partitions hold their NoC input (an NSU), so their pblocks take the NSU sites."""
+    groups = partition_groups(board, len(partitions))
+    return _pblocks_xdc(board, partitions, groups, design_name, noc)
+
+
+def _pblocks_xdc(board, partitions, groups, design_name, noc=False):
     lines = []
     for i, part in enumerate(partitions):
         pname = part["partition_name"]
@@ -141,20 +172,21 @@ def generate_pblocks_xdc(board, partitions, design_name):
             f"add_cells_to_pblock [get_pblocks pblock_{pname}] "
             f"[get_cells -quiet [list {design_name}_i/{pname}/rp]]"
         )
-        for res in resources:
+        for res in board["pblock_resources"] + (["NOC_NSU512"] if noc else []):
             lines.append(
                 f"resize_pblock pblock_{pname} -add "
                 f"[get_sites {res}* -of [get_clock_regions {{{cr_list}}}]]"
             )
-        lines.append(f"set_property RESET_AFTER_RECONFIG true [get_pblocks pblock_{pname}]")
+        if board["family"] != "versal":  # Versal resets reconfigured logic itself (DRC HDPR-32)
+            lines.append(f"set_property RESET_AFTER_RECONFIG true [get_pblocks pblock_{pname}]")
         lines.append(f"set_property SNAPPING_MODE ON [get_pblocks pblock_{pname}]")
         lines.append("")
 
     return "\n".join(lines)
 
 
-def write_pblocks_xdc(board, partitions, design_name, output_dir):
-    xdc_content = generate_pblocks_xdc(board, partitions, design_name)
+def write_pblocks_xdc(board, partitions, design_name, output_dir, noc=False):
+    xdc_content = generate_pblocks_xdc(board, partitions, design_name, noc)
     xdc_path = Path(output_dir) / "pblocks.xdc"
     xdc_path.write_text(xdc_content)
     return xdc_path

@@ -41,9 +41,9 @@ pynq-pr may use cocotbpynq's public API (`cocotbpynq`, `cocotbpynq.pr`), never i
 
 ## Adding a board
 
-1. Add an entry to `BOARDS` in `packages/pynq-pr/src/pynq_pr/boards.py`. It needs the part, the board part, the ICAP primitive (`ICAPE2` for Zynq-7000, `ICAPE3` for Zynq UltraScale+), the clock regions, the reconfigurable regions and the pblock resources. Copy the closest existing board.
-2. Add `packages/pynq-pr/src/pynq_pr/scripts/ps_<board>.tcl`, which sets up the processing system. Copy the closest existing one.
-3. Run `pytest tests`. It checks that every board is complete and can floorplan 1–4 partitions.
+1. Add an entry to `BOARDS` in `packages/pynq-pr/src/pynq_pr/boards.py`. It needs the part, the board part, the family (`zynq` or `versal`), the Vivado release it is tested with, the ICAP primitive (`ICAPE2` for Zynq-7000, `ICAPE3` for Zynq UltraScale+, `None` for Versal), the clock regions, the reconfigurable regions (or explicit `layouts` when clock regions differ in kind, as on Versal) and the pblock resources. Copy the closest existing board.
+2. Add `packages/pynq-pr/src/pynq_pr/scripts/ps_<board>.tcl`, which sets up the processing system (and on Versal the NoC and DDR). Copy the closest existing one. A board without a Vivado board file also needs `packages/pynq-pr/src/pynq_pr/constraints/<board>.xdc` for its pins.
+3. Run `pytest tests`. It checks that every board is complete and can floorplan every partition count it supports.
 4. On a lab machine: run `pynq-pr build` for `examples/pynq-pr/add_sub` with the new board, then run it on the board.
 5. Add the board to the table in `packages/pynq-pr/README.md`.
 

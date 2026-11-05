@@ -129,6 +129,100 @@ proc add_versatile {clk_net versatile_clk_src versatile_freq resetn_net resetn_e
     connect_bd_net [get_bd_pins icap_rst_system/peripheral_aresetn]      [get_bd_pins versatile/icap_rstn]
 }
 
+# AXI crossbar with nsi slave and nmi master ports, all on one clock and reset. Zynq keeps the
+# axi_interconnect its published results were measured with; Versal has no axi_interconnect, so it
+# gets a smartconnect.
+proc axi_crossbar {name nsi nmi clk resetn} {
+    global family
+    if {$family eq "versal"} {
+        set cell [create_bd_cell -type ip -vlnv xilinx.com:ip:smartconnect $name]
+        set_property -dict [list CONFIG.NUM_SI $nsi CONFIG.NUM_MI $nmi] $cell
+        connect_bd_net $clk    [get_bd_pins $name/aclk]
+        connect_bd_net $resetn [get_bd_pins $name/aresetn]
+        return $cell
+    }
+    set cell [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect $name]
+    set_property -dict [list CONFIG.NUM_SI $nsi CONFIG.NUM_MI $nmi] $cell
+    connect_bd_net $clk    [get_bd_pins $name/ACLK]
+    connect_bd_net $resetn [get_bd_pins $name/ARESETN]
+    foreach {prefix n} [list S $nsi M $nmi] {
+        for {set i 0} {$i < $n} {incr i} {
+            connect_bd_net $clk    [get_bd_pins $name/${prefix}[format %02d $i]_ACLK]
+            connect_bd_net $resetn [get_bd_pins $name/${prefix}[format %02d $i]_ARESETN]
+        }
+    }
+    return $cell
+}
+
+# NoC interconnect (noc_interconnect: true, Versal): the stream NoC replaces the AXI4-Stream switch.
+# Endpoints keep the switch's numbering: 2i is partition i, 2i+1 is DMA i. Every source enters the
+# NoC at a static NMU, tagged with its destination by the rps_route GPIO (one field per source),
+# and TDEST selects the destination. DMA inputs are static NSUs; partition inputs are NSUs inside
+# the partitions (utils::add_noc_input), reached over INI paths owned by the static rps_noc
+# (DRC BD 41-2478). The GPIO's reset value routes each partition to and from its own DMA.
+proc add_noc_interconnect {names clk resetn ctrl_slot} {
+    set n [llength $names]
+    set n_end [expr {2 * $n}]
+    set w 1
+    while {(1 << $w) < $n_end} { incr w }
+    set c [utils::noc_stream_qos]
+
+    set to_dma {}
+    set to_rp {}
+    set default 0
+    for {set i 0} {$i < $n} {incr i} {
+        lappend to_rp  [format "0x%x 0x%x" [expr {2 * $i}] [expr {2 * $i}]]
+        lappend to_dma [format "0x%x 0x%x" [expr {2 * $i + 1}] [expr {2 * $i + 1}]]
+        set default [expr {$default | ((2 * $i + 1) << (2 * $i * $w)) | ((2 * $i) << ((2 * $i + 1) * $w))}]
+    }
+    set noc [create_bd_cell -type ip -vlnv xilinx.com:ip:axis_noc rps_noc]
+    set_property -dict [list CONFIG.NUM_SI $n_end CONFIG.NUM_MI $n CONFIG.NUM_NSI 0 CONFIG.NUM_NMI $n \
+        CONFIG.NUM_CLKS 1 CONFIG.TDEST_WIDTH $w CONFIG.SI_DESTID_PINS [join [lrepeat $n_end 1] ,] \
+        CONFIG.MI_TDEST_VALS [join $to_dma ,] CONFIG.NMI_TDEST_VALS [join $to_rp ,]] $noc
+    connect_bd_net $clk [get_bd_pins rps_noc/aclk0]
+
+    set route [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio rps_route]
+    set_property -dict [list CONFIG.C_ALL_OUTPUTS {1} CONFIG.C_GPIO_WIDTH [expr {$w * $n_end}] \
+        CONFIG.C_DOUT_DEFAULT [format 0x%08X $default]] $route
+    connect_bd_net $clk    [get_bd_pins rps_route/s_axi_aclk]
+    connect_bd_net $resetn [get_bd_pins rps_route/s_axi_aresetn]
+    connect_bd_intf_net [get_bd_intf_pins rps_axi_periph/M[format %02d $ctrl_slot]_AXI] [get_bd_intf_pins rps_route/S_AXI]
+
+    for {set s 0} {$s < $n_end} {incr s} {
+        set i [expr {$s / 2}]
+        set name [lindex $names $i]
+        set from [expr {$s % 2 ? "$name/M_AXIS_MM2S" : "$name/s_mm_maxis"}]
+        set tx [create_bd_cell -type module -reference noc_stream_tx noc_tx$s]
+        set_property CONFIG.DEST_W $w $tx
+        set dest [create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice noc_dest$s]
+        set_property -dict [list CONFIG.DIN_WIDTH [expr {$w * $n_end}] \
+            CONFIG.DIN_FROM [expr {$w * $s + $w - 1}] CONFIG.DIN_TO [expr {$w * $s}]] $dest
+        connect_bd_net [get_bd_pins rps_route/gpio_io_o] [get_bd_pins noc_dest$s/Din]
+        connect_bd_net [get_bd_pins noc_dest$s/Dout] [get_bd_pins noc_tx$s/dest]
+        connect_bd_intf_net [get_bd_intf_pins $from] [get_bd_intf_pins noc_tx$s/s_axis]
+        connect_bd_intf_net [get_bd_intf_pins noc_tx$s/m_axis] [get_bd_intf_pins rps_noc/[format S%02d_AXIS $s]]
+        connect_bd_net $clk [get_bd_pins noc_tx$s/clk]
+        connect_bd_net $resetn [get_bd_pins noc_tx$s/resetn]
+        # A partition sends to any other partition or any DMA; a DMA to any partition.
+        set conns {}
+        for {set j 0} {$j < $n} {incr j} {
+            if {$s % 2 == 1 || $j != $i} { lappend conns [format M%02d_INIS $j] $c }
+            if {$s % 2 == 0}             { lappend conns [format M%02d_AXIS $j] $c }
+        }
+        set_property CONFIG.CONNECTIONS $conns [get_bd_intf_pins rps_noc/[format S%02d_AXIS $s]]
+    }
+    for {set i 0} {$i < $n} {incr i} {
+        set name [lindex $names $i]
+        set ini [get_bd_intf_pins rps_noc/[format M%02d_INIS $i]]
+        set_property CONFIG.INI_STRATEGY load $ini
+        connect_bd_intf_net $ini [get_bd_intf_pins $name/S_INIS]
+        create_bd_cell -type module -reference noc_stream_narrow noc_narrow$i
+        connect_bd_intf_net [get_bd_intf_pins rps_noc/[format M%02d_AXIS $i]] [get_bd_intf_pins noc_narrow$i/s_axis]
+        connect_bd_intf_net [get_bd_intf_pins noc_narrow$i/m_axis] [get_bd_intf_pins $name/S_AXIS_S2MM]
+        connect_bd_net $clk [get_bd_pins noc_narrow$i/clk]
+    }
+}
+
 set design_name $project_name
 create_bd_design $design_name
 
@@ -142,26 +236,14 @@ connect_bd_net $clk_net    [get_bd_pins gpio_decouple/s_axi_aclk]
 connect_bd_net $resetn_net [get_bd_pins gpio_decouple/s_axi_aresetn]
 
 # RP control path: GP1 -> rps_axi_periph
-# 2*N+1 masters: N dma + N decoupler + gpio_decouple (+ 1 for axis_switch ctrl if axis_switch)
-if {$axis_switch eq "1"} {
+# 2*N+1 masters: N dma + N decoupler + gpio_decouple (+ 1 for the axis_switch ctrl or the NoC's rps_route)
+if {$axis_switch eq "1" || $noc_interconnect eq "1"} {
     set num_mi [expr {2 * $num_rps + 2}]
 } else {
     set num_mi [expr {2 * $num_rps + 1}]
 }
-set rps_axi_periph [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect rps_axi_periph]
-set_property CONFIG.NUM_MI $num_mi $rps_axi_periph
-
+axi_crossbar rps_axi_periph 1 $num_mi $clk_net $resetn_net
 connect_bd_intf_net $gp1_intf [get_bd_intf_pins rps_axi_periph/S00_AXI]
-connect_bd_net $clk_net    [get_bd_pins rps_axi_periph/ACLK]
-connect_bd_net $clk_net    [get_bd_pins rps_axi_periph/S00_ACLK]
-connect_bd_net $resetn_net [get_bd_pins rps_axi_periph/ARESETN]
-connect_bd_net $resetn_net [get_bd_pins rps_axi_periph/S00_ARESETN]
-
-for {set i 0} {$i < $num_mi} {incr i} {
-    set mi [format "%02d" $i]
-    connect_bd_net $clk_net    [get_bd_pins rps_axi_periph/M${mi}_ACLK]
-    connect_bd_net $resetn_net [get_bd_pins rps_axi_periph/M${mi}_ARESETN]
-}
 
 # gpio_decouple connects to master slot 2*N
 set mi_gpio [format "%02d" [expr {2 * $num_rps}]]
@@ -187,25 +269,9 @@ if {$axis_switch eq "1"} {
     connect_bd_intf_net [get_bd_intf_pins rps_axi_periph/M${mi_switch}_AXI] [get_bd_intf_pins rps_axis_switch/S_AXI_CTRL]
 }
 
-# RP data path: axi_interconnect (2N slaves: N MM2S + N S2MM) -> HP0
-set num_si [expr {2 * $num_rps}]
-set rps_interconnect [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect rps_interconnect]
-set_property -dict [list \
-    CONFIG.NUM_SI $num_si \
-    CONFIG.NUM_MI {1} \
-] $rps_interconnect
-
+# RP data path: crossbar (2N slaves: N MM2S + N S2MM) -> HP0
+axi_crossbar rps_interconnect [expr {2 * $num_rps}] 1 $clk_net $resetn_net
 connect_bd_intf_net [get_bd_intf_pins rps_interconnect/M00_AXI] $hp0_intf
-connect_bd_net $clk_net    [get_bd_pins rps_interconnect/ACLK]
-connect_bd_net $resetn_net [get_bd_pins rps_interconnect/ARESETN]
-connect_bd_net $clk_net    [get_bd_pins rps_interconnect/M00_ACLK]
-connect_bd_net $resetn_net [get_bd_pins rps_interconnect/M00_ARESETN]
-
-for {set j 0} {$j < $num_si} {incr j} {
-    set si [format "%02d" $j]
-    connect_bd_net $clk_net    [get_bd_pins rps_interconnect/S${si}_ACLK]
-    connect_bd_net $resetn_net [get_bd_pins rps_interconnect/S${si}_ARESETN]
-}
 
 # DFX decoupler interface config (same for all RPs and matches dummy.v boundary)
 set dfx_all_params {INTF {mm_saxis {ID 0 VLNV xilinx.com:interface:axis_rtl:1.0 MODE slave SIGNALS \
@@ -226,6 +292,22 @@ set dfx_all_params {INTF {mm_saxis {ID 0 VLNV xilinx.com:interface:axis_rtl:1.0 
     {WIDTH 4 PRESENT 0} AWUSER {WIDTH 0 PRESENT 0} WID {WIDTH 0 PRESENT 0} WUSER {WIDTH 0 PRESENT 0} BID \
     {WIDTH 0 PRESENT 0} BUSER {WIDTH 0 PRESENT 0} ARID {WIDTH 0 PRESENT 0} ARREGION {WIDTH 4 PRESENT 0} ARQOS \
     {WIDTH 4 PRESENT 0} ARUSER {WIDTH 0 PRESENT 0} RID {WIDTH 0 PRESENT 0} RUSER {WIDTH 0 PRESENT 0}}}} IPI_PROP_COUNT 2}
+
+# With the NoC interconnect a partition's input arrives over the NoC, whose endpoint inside the
+# partition the PLM quiesces during reconfiguration, so the decoupler covers only the output stream
+# and AXI-Lite; the NoC input is part of the partition ($rm_cells, grouped by create_rp_bdc.tcl).
+set dec_params $dfx_all_params
+set dec_gui_intf mm_saxis
+set rm_cells [list dummy]
+if {$noc_interconnect eq "1"} {
+    set dec_intf [dict get $dfx_all_params INTF]
+    dict unset dec_intf mm_saxis
+    dict set dec_intf mm_maxis ID 0
+    dict set dec_intf AXILiteS ID 1
+    dict set dec_params INTF $dec_intf
+    set dec_gui_intf mm_maxis
+    set rm_cells [list dummy noc_rx noc_narrow]
+}
 
 # Create per-RP hierarchies
 for {set i 0} {$i < $num_rps} {incr i} {
@@ -248,12 +330,16 @@ for {set i 0} {$i < $num_rps} {incr i} {
     create_bd_pin -dir I -type rst rst_n
     create_bd_pin -dir I decouple
 
-    if {$axis_switch eq "1"} {
-        # Expose DMA and decoupler AXI-Stream ports for external switch routing
+    if {$axis_switch eq "1" || $noc_interconnect eq "1"} {
+        # Expose DMA and decoupler AXI-Stream ports for external switch (or NoC) routing
         create_bd_intf_pin -mode Master -vlnv xilinx.com:interface:axis_rtl:1.0 M_AXIS_MM2S
         create_bd_intf_pin -mode Slave  -vlnv xilinx.com:interface:axis_rtl:1.0 S_AXIS_S2MM
         create_bd_intf_pin -mode Master -vlnv xilinx.com:interface:axis_rtl:1.0 s_mm_maxis
-        create_bd_intf_pin -mode Slave  -vlnv xilinx.com:interface:axis_rtl:1.0 s_mm_saxis
+        if {$noc_interconnect eq "1"} {
+            create_bd_intf_pin -mode Slave -vlnv xilinx.com:interface:inis_rtl:1.0 S_INIS
+        } else {
+            create_bd_intf_pin -mode Slave -vlnv xilinx.com:interface:axis_rtl:1.0 s_mm_saxis
+        }
     }
 
     # AXI DMA
@@ -270,16 +356,20 @@ for {set i 0} {$i < $num_rps} {incr i} {
     # DFX Decoupler
     set decoupler [create_bd_cell -type ip -vlnv xilinx.com:ip:dfx_decoupler decoupler]
     set_property -dict [list \
-        CONFIG.ALL_PARAMS $dfx_all_params \
-        CONFIG.GUI_INTERFACE_NAME {mm_saxis} \
+        CONFIG.ALL_PARAMS $dec_params \
+        CONFIG.GUI_INTERFACE_NAME $dec_gui_intf \
         CONFIG.GUI_INTERFACE_REGISTER {false} \
     ] $decoupler
 
     # Dummy placeholder
     set dummy [create_bd_cell -type module -reference dummy dummy]
 
-    # Decoupler <-> Dummy connections (always present)
-    connect_bd_intf_net [get_bd_intf_pins decoupler/rp_mm_saxis] [get_bd_intf_pins dummy/x]
+    # Decoupler <-> Dummy connections (the input comes from the NoC with the NoC interconnect)
+    if {$noc_interconnect eq "1"} {
+        connect_bd_intf_net [utils::add_noc_input [get_bd_intf_pins S_INIS] [get_bd_pins clk]] [get_bd_intf_pins dummy/x]
+    } else {
+        connect_bd_intf_net [get_bd_intf_pins decoupler/rp_mm_saxis] [get_bd_intf_pins dummy/x]
+    }
     connect_bd_intf_net [get_bd_intf_pins dummy/y]               [get_bd_intf_pins decoupler/rp_mm_maxis]
     connect_bd_intf_net [get_bd_intf_pins decoupler/rp_AXILiteS] [get_bd_intf_pins dummy/s_axi_AXILiteS]
 
@@ -288,6 +378,11 @@ for {set i 0} {$i < $num_rps} {incr i} {
         connect_bd_intf_net [get_bd_intf_pins dma/M_AXIS_MM2S]     [get_bd_intf_pins M_AXIS_MM2S]
         connect_bd_intf_net [get_bd_intf_pins S_AXIS_S2MM]         [get_bd_intf_pins dma/S_AXIS_S2MM]
         connect_bd_intf_net [get_bd_intf_pins s_mm_saxis]          [get_bd_intf_pins decoupler/s_mm_saxis]
+        connect_bd_intf_net [get_bd_intf_pins decoupler/s_mm_maxis] [get_bd_intf_pins s_mm_maxis]
+    } elseif {$noc_interconnect eq "1"} {
+        # Expose streams for NoC routing (the partition input is S_INIS)
+        connect_bd_intf_net [get_bd_intf_pins dma/M_AXIS_MM2S]     [get_bd_intf_pins M_AXIS_MM2S]
+        connect_bd_intf_net [get_bd_intf_pins S_AXIS_S2MM]         [get_bd_intf_pins dma/S_AXIS_S2MM]
         connect_bd_intf_net [get_bd_intf_pins decoupler/s_mm_maxis] [get_bd_intf_pins s_mm_maxis]
     } else {
         # Direct DMA <-> Decoupler wiring
@@ -308,6 +403,13 @@ for {set i 0} {$i < $num_rps} {incr i} {
     connect_bd_net [get_bd_pins rst_n]    [get_bd_pins dma/axi_resetn]
     connect_bd_net [get_bd_pins rst_n]    [get_bd_pins dummy/rst_n]
     connect_bd_net [get_bd_pins decouple] [get_bd_pins decoupler/decouple]
+    # Versal's decoupler has a clock and reset per interface (none on Zynq)
+    foreach pin [get_bd_pins -quiet decoupler/*_aclk] {
+        connect_bd_net [get_bd_pins clk] $pin
+    }
+    foreach pin [get_bd_pins -quiet decoupler/*_arstn] {
+        connect_bd_net [get_bd_pins rst_n] $pin
+    }
 
     current_bd_instance $oldCurInst
 
@@ -344,9 +446,13 @@ for {set i 0} {$i < $num_rps} {incr i} {
     }
 }
 
+if {$noc_interconnect eq "1"} {
+    add_noc_interconnect $partition_names $clk_net $resetn_net [expr {2 * $num_rps + 1}]
+}
+
 if {$reconfiguration_method eq "icap"} {
     add_versatile $clk_net $versatile_clk_src $versatile_freq $resetn_net $resetn_ext $gp0_intf $hp1_intf $hp1_aclk $icap_primitive
-} else {
+} elseif {$hp1_aclk ne ""} {
     # HP1 enabled but unused in PCAP mode — connect clock for validation
     connect_bd_net $versatile_clk_src $hp1_aclk
 }

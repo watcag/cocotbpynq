@@ -11,6 +11,24 @@ Both packages (cocotbpynq and pynq-pr) are released together under one version f
   brought out); the overlay serves AXI4 masters from a model of the card's memory banks and drives each CU's
   AXI-Lite control port. `write_xclbin` writes a metadata-only xclbin to simulate before linking. Example:
   `examples/cocotbpynq/alveo_example`.
+- pynq-pr: Alinx VD100 board (Versal AI Edge `xcve2302`, Vivado 2025.1). `pynq-pr build` writes a bootable
+  static `.pdi` and one partial `.pdi` per module; the board's CIPS, NoC and DDR4 setup is
+  `scripts/ps_vd100.tcl` and its pins `constraints/vd100.xdc`. Partitions are whole clock-region rows from
+  the board's layouts (1–3 partitions). Examples: `pr_vd100.yaml` in `add_sub` and `vision`. See
+  `docs/pynq-pr/vd100`.
+- pynq-pr: `noc_interconnect: true` (Versal) routes partition and DMA streams over the stream NoC instead
+  of the AXI4-Stream switch: static source endpoints tagged with a destination from the `rps_route` GPIO,
+  partition inputs as NoC endpoints inside the partitions. A route change applies from the next packet.
+  `pynq-pr validate` checks the board's NoC endpoint budget. Example: `vision/pr_vd100_noc.yaml`.
+
+### Changed
+- pynq-pr boards name their family and tested Vivado release (`family`, `vivado` in `boards.py`); the build
+  warns when another release runs it. A board may list explicit floorplan `layouts` instead of leaving the
+  split to the floorplanner, and `pynq-pr validate` checks the partition count against them.
+- `reconfiguration_method: icap` is rejected for boards without an ICAP.
+- `pynq-pr build -j/--jobs` sets the number of parallel Vivado runs (default 16, as before).
+- `pynq-pr build` stops at the block design when a module pin is not connected to its partition boundary,
+  instead of implementing an empty partition, and names the interface a module lacks.
 
 ### Fixed
 - `pynq-pr build` exits non-zero when Vivado fails. It ran Vivado in `-mode tcl`, which drops to its
