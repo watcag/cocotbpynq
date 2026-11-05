@@ -12,6 +12,10 @@ Both packages (cocotbpynq and pynq-pr) are released together under one version f
   AXI-Lite control port. `write_xclbin` writes a metadata-only xclbin to simulate before linking. Example:
   `examples/cocotbpynq/alveo_example`.
 
+### Fixed
+- `pynq-pr build` exits non-zero when Vivado fails. It ran Vivado in `-mode tcl`, which drops to its
+  prompt on a Tcl error and then exits with status 0, so a failed build printed "Done".
+
 ## 0.2.0 (2026-10-06)
 
 ### Changed
