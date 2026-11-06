@@ -14,12 +14,27 @@ Example
 >>> ol.add.download("add_c_5.bin", icap=True)
 >>> ol.pr_download("add", "add_c_5.bit")
 >>> dma = ol.chain(["add", "sub"])
+
+On Versal (VD100) the static design boots with the board (BOOT.BIN), so the
+overlay attaches to it, and the PLM loads partial PDIs from DDR on request
+(see Plm):
+
+>>> ol = Overlay("tutorial_vd100.pdi")
+>>> ol.pr_download("add", "add_c_5.pdi")
 """
 
+import glob
 import os
+import threading
+import time
+import warnings
 
-from pynq import DefaultHierarchy, DefaultIP, Overlay as _PynqOverlay, PL
+import numpy as np
+from pynq import DefaultHierarchy, DefaultIP, MMIO, Overlay as _PynqOverlay, PL, allocate
 from pynq.lib import AxiGPIO
+
+# Versal Gen 1 part prefixes (AI Core, AI Edge, Prime, Premium, HBM): the IPI address map Plm uses.
+_VERSAL_GEN1 = ("xcvc", "xcve", "xcvm", "xcvp", "xcvh")
 
 
 # DefaultIP: AXI4-Stream Switch (PG085)
@@ -36,7 +51,6 @@ class AxisSwitch:
     _DISABLE = 0x80000000
 
     def __init__(self, ip_info):
-        from pynq import MMIO
         self._mmio = MMIO(ip_info["phys_addr"], ip_info["addr_range"])
         self.num_ports = int(ip_info["parameters"]["C_NUM_MI_SLOTS"])
 
@@ -72,6 +86,126 @@ class AxisSwitch:
         self.route({})
 
 
+class NocRoute:
+    """Runtime routing for the NoC interconnect (noc_interconnect: true).
+
+    The rps_route GPIO holds one destination field per source, w bits each
+    (w = bits for 2N endpoints; field s at bits [w*s, w*s+w)). Endpoint 2i is
+    partition i and 2i+1 is DMA i, as on the AXI4-Stream switch. A source
+    takes its destination at a packet's first beat, so a route written
+    mid-packet applies from the next packet.
+    """
+
+    def __init__(self, ip_info, num_partitions):
+        self._gpio = AxiGPIO(ip_info).channel1
+        self._n_end = 2 * num_partitions
+        self._w = max(1, (self._n_end - 1).bit_length())
+
+    def route(self, mapping):
+        """Program the routes.
+
+        Parameters
+        ----------
+        mapping : dict
+            {destination: source}, as for AxisSwitch.route. Unlisted
+            sources keep their default route (partition i <-> DMA i), unlike
+            on the switch, where they are disabled; an idle source sends
+            nothing, so its route is harmless. The NoC connects every source
+            to every destination except itself and DMA to DMA.
+        """
+        dest = {s: s ^ 1 for s in range(self._n_end)}
+        for d, s in mapping.items():
+            if d == s or (d % 2 and s % 2):
+                raise ValueError(f"no NoC path from endpoint {s} to endpoint {d}")
+            dest[s] = d
+        value = sum(d << (self._w * s) for s, d in dest.items())
+        self._gpio.write(value, (1 << (self._w * self._n_end)) - 1)
+
+    def default(self):
+        """Each RP independently wired to its own DMA."""
+        self.route({})
+
+
+class Plm:
+    """Versal Gen 1 platform loader and manager (PLM), reached over IPI channel 3.
+
+    A request goes into the channel's message buffer for the PMC; setting the
+    PMC's trigger bit interrupts the PLM, which writes its response after the
+    request and clears the bit (for a PDI load, once the load has finished).
+    pynq-pr's Versal shells give channel 3 to the A72 cores; Linux reaches the
+    PLM through TF-A on channel 0, so the two do not share a buffer. Requests are
+    serialized within a process; one process at a time may own the channel, as
+    one process owns the overlay. Requests carry no CRC (a PLM built with
+    ENABLE_IPI_CRC rejects them). Addresses (Gen 1 only; Versal Net and Gen 2
+    differ) and command formats: Versal TRM (AM011, IPI) and the PLM's
+    xilplmi/xilloader sources.
+    """
+
+    _IPI3 = 0xFF360000              # channel 3 registers
+    _MSG_RAM = 0xFF3F0000           # IPI message buffers
+    # Buffer from channel 3 (buffer index 5) to the PMC (index 1): 32-byte request, then 32-byte response
+    _SLOT = 5 * 0x200 + 1 * 0x40
+    _TRIG, _OBS, _PMC_BIT = 0x00, 0x04, 1 << 1
+    _MAX_ARGS = 6                   # 8-word request: header, arguments, CRC word
+
+    _GENERIC, _EVENT_LOGGING = 1, 19
+    _LOADER, _FEATURES, _LOAD_PDI, _PDI_SRC_DDR = 7, 0, 1, 0xF
+
+    _lock = threading.Lock()
+
+    def __init__(self, timeout=5.0):
+        claimed = glob.glob("/sys/bus/platform/devices/ff360000.*")
+        if claimed:
+            raise RuntimeError(f"PLM: IPI channel 3 is claimed by the Linux device {claimed[0]}")
+        self._regs = MMIO(self._IPI3, 0x8)
+        self._msg = MMIO(self._MSG_RAM, 0x1000)
+        self._timeout = timeout
+
+    def call(self, module, command, *args):
+        """Send one command and return the six response words after the status."""
+        if len(args) > self._MAX_ARGS:
+            raise ValueError(f"PLM: at most {self._MAX_ARGS} arguments per command")
+        with self._lock:
+            if self._regs.read(self._OBS) & self._PMC_BIT:
+                raise RuntimeError("PLM: an earlier request on IPI channel 3 has not been answered "
+                                   "(an interrupted load still running, or a PLM that does not serve the channel)")
+            words = [(len(args) << 16) | (module << 8) | command, *args]
+            for i in range(8):
+                self._msg.write(self._SLOT + 4 * i, words[i] if i < len(words) else 0)
+            # The trigger is written after the request, through device memory, as TF-A does.
+            self._regs.write(self._TRIG, self._PMC_BIT)
+            deadline = time.monotonic() + self._timeout
+            while self._regs.read(self._OBS) & self._PMC_BIT:
+                if time.monotonic() > deadline:
+                    raise TimeoutError("PLM: no response on IPI channel 3")
+            response = [self._msg.read(self._SLOT + 0x20 + 4 * i) for i in range(7)]
+        if response[0]:
+            detail = " ".join(f"{w:#x}" for w in response[1:3])
+            raise RuntimeError(f"PLM: command {module}.{command} failed: status {response[0]:#x} ({detail})")
+        return response[1:]
+
+    def check_loader(self):
+        """Raise unless the PLM's loader answers on this channel and serves PDI loads."""
+        if self.call(self._LOADER, self._FEATURES, self._LOAD_PDI)[0] != 0:
+            raise RuntimeError("PLM: the loader does not support loading PDIs")
+
+    def disable_uart(self):
+        """Stop the PLM's console output until reboot or enable_uart().
+
+        The PLM waits for every line it prints at 115200 baud, which adds tens of
+        milliseconds to each partial load. Its log buffer in memory keeps the messages.
+        """
+        self.call(self._GENERIC, self._EVENT_LOGGING, 8, 0, 1, 0)  # configure UART: current, disabled
+
+    def enable_uart(self):
+        """Restore the PLM's console output."""
+        self.call(self._GENERIC, self._EVENT_LOGGING, 8, 0, 0, 0)  # configure UART: current, enabled
+
+    def load_pdi(self, address):
+        """Load the PDI at a physical DDR address; returns when it is loaded."""
+        self.call(self._LOADER, self._LOAD_PDI, self._PDI_SRC_DDR, address >> 32, address & 0xFFFFFFFF)
+
+
 # DefaultHierarchy: per-RP hierarchy (contains dma + rp)
 class PrPartition(DefaultHierarchy):
     """Driver for a single reconfigurable partition hierarchy."""
@@ -98,6 +232,9 @@ class PrPartition(DefaultHierarchy):
             Reconfiguration method: "pcap", "fpga_manager", or "icap".
         icap : bool
             Legacy shorthand. If True, equivalent to method="icap".
+
+        If the load fails or is interrupted, the partition stays decoupled: it
+        may be partly configured, and is reconnected by the next successful load.
         """
         if icap:
             method = "icap"
@@ -107,6 +244,8 @@ class PrPartition(DefaultHierarchy):
                 "Partition not bound to a pynq-pr Overlay. "
                 "Use overlay.Overlay instead of pynq.Overlay."
             )
+        if ol._versal and method == "icap":
+            raise ValueError("Versal has no ICAP: partials are loaded by the PLM")
 
         name = self.description["fullpath"]
         if name not in ol._partitions:
@@ -115,15 +254,15 @@ class PrPartition(DefaultHierarchy):
         bit_index = ol._partitions[name]
         mask = 1 << bit_index
         ol._decoupler.write(mask, mask)
-        try:
-            if method == "icap":
-                ol._icap_download(self, partial_bit)
-            elif method == "fpga_manager":
-                ol._fpga_manager_download(partial_bit)
-            else:
-                self.rp.download(partial_bit)
-        finally:
-            ol._decoupler.write(0, mask)
+        if ol._versal:
+            ol._pdi_download(partial_bit)
+        elif method == "icap":
+            ol._icap_download(self, partial_bit)
+        elif method == "fpga_manager":
+            ol._fpga_manager_download(partial_bit)
+        else:
+            self.rp.download(partial_bit)
+        ol._decoupler.write(0, mask)
 
 
 # Overlay
@@ -135,20 +274,33 @@ class Overlay(_PynqOverlay):
     """
 
     def __init__(self, bitfile_name, download=True, **kwargs):
-        PL.reset()
+        # Versal: the static design booted with the board (BOOT.BIN) and cannot be
+        # reloaded from Linux, so attach to it.
+        bitfile_name = os.fspath(bitfile_name)
+        self._versal = bitfile_name.endswith(".pdi")
+        self.partial_ext = ".pdi" if self._versal else ".bit"
+        if self._versal:
+            download = False
+            # An absolute path skips PYNQ's search of installed overlay packages, which the
+            # Versal PYNQ bundle does not ship (pynq.overlays).
+            bitfile_name = os.path.abspath(bitfile_name)
+        else:
+            PL.reset()
         super().__init__(bitfile_name, download=download, **kwargs)
 
         self._decoupler = AxiGPIO(self.ip_dict["gpio_decouple"]).channel1
         self._partitions = {}
         self._icap_cache = {}
         self._fpga_mgr_cache = {}
+        self._pdi_buffers = {}
 
         # Build a map from partition name to bit_index by parsing the HWH for
         # decouple_<name> xlslice DIN_FROM parameters — authoritative hardware mapping.
         import xml.etree.ElementTree as ET
-        hwh_path = bitfile_name.replace(".bit", ".hwh")
+        hwh_path = os.path.splitext(bitfile_name)[0] + ".hwh"
+        hwh = ET.parse(hwh_path)
         decouple_bits = {}
-        for m in ET.parse(hwh_path).iter("MODULE"):
+        for m in hwh.iter("MODULE"):
             if m.get("MODTYPE") == "xlslice":
                 inst = m.get("INSTANCE", "")
                 if inst.startswith("decouple_"):
@@ -175,9 +327,22 @@ class Overlay(_PynqOverlay):
             if ip_desc.get("type", "") == "xilinx.com:ip:axis_switch:1.1":
                 self._switch = AxisSwitch(ip_desc)
                 break
+        if self._switch is None and "rps_route" in self.ip_dict:
+            self._switch = NocRoute(self.ip_dict["rps_route"], len(self._partitions))
 
         if self._switch is not None:
             self._switch.default()
+
+        if self._versal:
+            device = hwh.find("SYSTEMINFO").get("DEVICE", "")
+            if not device.startswith(_VERSAL_GEN1):
+                raise NotImplementedError(f"pynq-pr loads partials on Versal Gen 1 devices only, not {device}")
+            self._plm = Plm()
+            self._plm.check_loader()  # fails here, not at the first load, if the PLM does not answer
+            try:
+                self._plm.disable_uart()
+            except RuntimeError as e:  # e.g. no PLM console: loads are still correct
+                warnings.warn(f"PLM console output left on, loads are slower: {e}")
 
     def pr_download(self, partition_name, partial_bit, method="pcap", icap=False):
         """Download a partial bitstream by partition name.
@@ -259,6 +424,27 @@ class Overlay(_PynqOverlay):
         if self._switch is not None:
             self._switch.default()
 
+    def _pdi_download(self, partial_pdi):
+        """Versal: have the PLM load a partial PDI from DDR.
+
+        The PDI is copied into a DMA buffer on its first load, and again only if the
+        file changes, so later loads copy nothing; the buffers live as long as the
+        overlay. The PLM checks that its parent ID is the running static design's
+        and quiesces the partition's NoC endpoints while it loads it.
+        """
+        stat = os.stat(partial_pdi)
+        if stat.st_size % 4:
+            raise ValueError(f"{partial_pdi}: not a PDI (size is not a multiple of 4 bytes)")
+        version = (stat.st_mtime_ns, stat.st_size)
+        cached = self._pdi_buffers.get(partial_pdi)
+        if cached is None or cached[0] != version:
+            data = np.fromfile(partial_pdi, dtype=np.uint32)
+            buf = allocate(shape=data.shape, dtype=np.uint32)
+            buf[:] = data
+            buf.flush()
+            cached = self._pdi_buffers[partial_pdi] = (version, buf)
+        self._plm.load_pdi(cached[1].physical_address)
+
     def _fpga_manager_download(self, partial_bit):
         """Fast PCAP download via Linux fpga_manager sysfs interface.
 
@@ -291,9 +477,6 @@ class Overlay(_PynqOverlay):
 
     def _icap_download(self, partition, partial_bit):
         """ICAP download via versatile controller (axi3_ctrl)."""
-        import numpy as np
-        from pynq import allocate, MMIO
-
         self._pcap_to_icap()
 
         _PRG_BIT = 1 << 1

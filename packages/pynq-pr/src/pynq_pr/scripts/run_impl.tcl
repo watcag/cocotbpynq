@@ -127,6 +127,35 @@ foreach part_config $partition_configs {
     }
 }
 
+# Versal: rewrite the partials uncompressed (the static image stays compressed). Vivado compresses
+# Versal images by default, but the PLM writes a raw partial from DDR faster than it decompresses one
+# (VD100, a clock-region row: 1.9 ms raw, 9 MB, against 3.4 ms compressed, 0.5 MB).
+if { $family eq "versal" } {
+    # write_device_image leaves its intermediate files next to the image, so write outside bits_dir.
+    # The first module of every partition comes from impl_base, every other module from its own run.
+    set raw_dir [file join $proj_dir uncompressed_partials]
+    file mkdir $raw_dir
+    set run_cells [dict create]
+    foreach part_config $partition_configs {
+        set pname [dict get $part_config partition_name]
+        set modules [dict get $part_config modules]
+        for {set i 0} {$i < [llength $modules]} {incr i} {
+            set cn [dict get [lindex $modules $i] cell_name]
+            dict lappend run_cells [expr {$i == 0 ? "impl_base" : "impl_${pname}_${cn}"}] [list $pname $cn]
+        }
+    }
+    dict for {run cells} $run_cells {
+        open_run $run
+        set_property BITSTREAM.GENERAL.COMPRESS FALSE [current_design]
+        foreach cell $cells {
+            lassign $cell pname cn
+            write_device_image -force -cell ${design_name}_i/${pname}/rp [file join $raw_dir ${pname}_${cn}.pdi]
+            file copy -force [file join $raw_dir ${pname}_${cn}.pdi] [file join $bits_dir ${pname}_${cn}.pdi]
+        }
+        close_design
+    }
+}
+
 # Generate .bin files for ICAP-based reconfiguration
 if { $reconfiguration_method eq "icap" } {
     # First RM partials from base run

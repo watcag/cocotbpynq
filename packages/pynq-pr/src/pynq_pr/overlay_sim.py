@@ -43,6 +43,7 @@ class Overlay(_CocotbOverlay):
 
     def __init__(self, bitfile_name=None, download=True, **kwargs):
         super().__init__(bitfile_name)
+        self.partial_ext = ".bit"
         partition_map_str = os.environ.get("PR_PARTITION_MAP")
         self._partitions = json.loads(partition_map_str) if partition_map_str else {}
         self.ip_dict = self._build_ip_dict()

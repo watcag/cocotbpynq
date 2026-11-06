@@ -99,14 +99,14 @@ Your RTL modules must match these port names to connect to the shipped block des
 | kv260 | xck26-sfvc784-2LV-c | Kria KV260 | 2022.2 | 1–4 |
 | vd100 | xcve2302-sfva784-1LP-e-s | Versal AI Edge (Alinx VD100) | 2025.1 | 1–3 |
 
-The VD100 build is checked; its runtime is not yet run on hardware. On Versal the static design boots with the board and only partial images are loaded at runtime: see [docs/vd100](https://github.com/watcag/cocotbpynq/blob/main/docs/pynq-pr/vd100/README.md).
+On Versal the static design boots with the board and only partial images are loaded at runtime: see [docs/vd100](https://github.com/watcag/cocotbpynq/blob/main/docs/pynq-pr/vd100/README.md).
 
 The PYNQ-Z2 uses the same device as the Z1 but is untested. PYNQ v4.0 no longer supports the Z1/Z2, so use a PYNQ v3.x image on those boards.
 
 ## Reconfiguration Methods
 
 - **pcap** (default): the PS reconfigures the FPGA over PCAP. Standard PYNQ flow.
-- **icap**: the FPGA reconfigures itself over ICAP using the Versatile DPR infrastructure. No PS involvement at reconfiguration time. Zynq boards only: Versal has no ICAP, and its PMC loads every partial image (`pcap` on the VD100).
+- **icap**: the FPGA reconfigures itself over ICAP using the Versatile DPR infrastructure. No PS involvement at reconfiguration time. Zynq boards only: Versal has no ICAP.
 
 The Z1 and KV260 examples use `icap`. On the KV260, ICAP requires the custom PMU firmware described in [docs/kv260](https://github.com/watcag/cocotbpynq/blob/main/docs/pynq-pr/kv260/README.md); without it, set `reconfiguration_method: pcap` in the example YAML.
 

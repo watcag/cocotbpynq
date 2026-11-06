@@ -5,6 +5,7 @@ Tests independent RP reconfiguration and chained pipelines via axis_switch.
 Usage:
     Board:  python3 pr_test.py --project tutorial_z1
     Board:  python3 pr_test.py --project tutorial_z1 --icap
+    Board:  python3 pr_test.py --project tutorial_vd100      (Versal: partial .pdi files)
     Sim:    pynq-pr sim -c pr_z1.yaml --test pr_test.py -f
 """
 import os
@@ -70,7 +71,7 @@ FAILURES = []
 
 def test_independent(ol, icap):
     print("\n=== Independent ===")
-    ext = ".bin" if icap else ".bit"
+    ext = ".bin" if icap else ol.partial_ext
     for pname, modules in PARTITIONS.items():
         for bitname, fn in modules:
             ol.pr_download(pname, f"{bitname}{ext}", icap=icap)
@@ -92,7 +93,7 @@ def test_chains(ol, icap):
         return
 
     print("\n=== Chains ===")
-    ext = ".bin" if icap else ".bit"
+    ext = ".bin" if icap else ol.partial_ext
     for chain in gen_chains():
         label = " -> ".join(f"{p}/{m}" for p, m, _ in chain)
 
@@ -120,7 +121,9 @@ def main(dut=None):
         parser.add_argument("--icap", action="store_true",
                             help="Use ICAP (.bin) instead of PCAP (.bit)")
         args = parser.parse_args()
-        ol = Overlay(f"{args.project}.bit")
+        # Versal boards boot the static .pdi; Zynq boards download the .bit
+        image = f"{args.project}.pdi" if os.path.exists(f"{args.project}.pdi") else f"{args.project}.bit"
+        ol = Overlay(image)
         icap = args.icap
 
     test_independent(ol, icap)
