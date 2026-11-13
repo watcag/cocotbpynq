@@ -31,6 +31,11 @@ differs where host code can notice:
 * A synced slice of a buffer syncs the whole buffer object (``bo.sync`` takes no range),
   buffers are at least 8 KiB, and ``freebuffer`` unmaps the buffer.
 * ``DMA`` channels drop ``_active_buffer`` after ``wait()``.
+* ``buffer.flush()``/``invalidate()`` call ``bo.sync(direction)`` (pl_server/xrt_device.py), an overload
+  pyxrt has only from XRT 2023.2 (2.16).  ``COCOTBPYNQ_PYXRT`` is the simulated board's pyxrt version,
+  default ``2.13.479`` (the KV260's XRT, whose pyxrt has only ``sync(direction, size, offset)``): there
+  every flush or invalidate raises ``RuntimeError: Buffer Flush Failed: sync(): incompatible function
+  arguments ...`` (``Buffer Invalidate Failed``), as on the board.
 
 Alveo cards (``cocotbpynq.xrt``) follow watcag/PYNQ's XrtNativeDevice instead, which loads
 an xclbin from its path and is not gated on ``ON_TARGET``.
@@ -43,6 +48,16 @@ SUPPORTED = ("3.0.1", "4.0.0")
 if VERSION not in SUPPORTED:
     raise ImportError(f"COCOTBPYNQ_PYNQ_VERSION={VERSION!r}: cocotbpynq simulates PYNQ {' or '.join(SUPPORTED)}")
 PYNQ4 = VERSION.split(".")[0] == "4"
+
+# The simulated board's pyxrt: the KV260's is built against XRT 2.13.479 (checked 2026-11-12).
+PYXRT = os.environ.get("COCOTBPYNQ_PYXRT", "2.13.479")
+try:
+    _PYXRT_VERSION = tuple(int(p) for p in PYXRT.split("."))
+except ValueError:
+    raise ImportError(f"COCOTBPYNQ_PYXRT={PYXRT!r}: give the board's XRT version, e.g. 2.13.479") from None
+if len(_PYXRT_VERSION) < 2:
+    raise ImportError(f"COCOTBPYNQ_PYXRT={PYXRT!r}: give at least major.minor")
+PYXRT_WHOLE_SYNC = _PYXRT_VERSION >= (2, 16)      # pyxrt.bo.sync(direction): XRT 2023.2 (2.16) and later
 
 LOADED_XCLBIN = "loaded.xclbin"
 MIN_BO_BYTES = 8192 if PYNQ4 else 0

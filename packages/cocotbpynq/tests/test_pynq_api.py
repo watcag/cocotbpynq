@@ -9,14 +9,15 @@ import warnings
 import numpy as np
 import pytest
 
-from cocotbpynq import buffer, pynq_api, xrt
+from cocotbpynq import buffer, pynq_api, pyxrt, xrt
 
 
 @pytest.fixture
 def pynq(monkeypatch, request):
     """Reload pynq_api as PYNQ <param> (default 4.0.0) with the given device tree."""
-    def select(version="4.0.0", tree=None):
+    def select(version="4.0.0", tree=None, pyxrt="2.16.204"):
         monkeypatch.setenv("COCOTBPYNQ_PYNQ_VERSION", version)
+        monkeypatch.setenv("COCOTBPYNQ_PYXRT", pyxrt)
         if tree is None:
             monkeypatch.delenv("COCOTBPYNQ_DEVICE_TREE", raising=False)
         else:
@@ -25,6 +26,7 @@ def pynq(monkeypatch, request):
     yield select
     monkeypatch.delenv("COCOTBPYNQ_PYNQ_VERSION", raising=False)
     monkeypatch.delenv("COCOTBPYNQ_DEVICE_TREE", raising=False)
+    monkeypatch.delenv("COCOTBPYNQ_PYXRT", raising=False)
     importlib.reload(pynq_api)
 
 
@@ -39,6 +41,56 @@ def board_tree(tmp_path, pynq_board=True):
 def test_default_is_pynq4_on_a_configured_board(pynq):
     api = pynq()
     assert api.VERSION == "4.0.0" and api.PYNQ4 and api.on_target()
+
+
+def test_default_pyxrt_is_the_kv260s(monkeypatch):
+    monkeypatch.delenv("COCOTBPYNQ_PYXRT", raising=False)
+    api = importlib.reload(pynq_api)
+    assert api.PYXRT == "2.13.479" and not api.PYXRT_WHOLE_SYNC
+
+
+@pytest.mark.parametrize("bad", ["2", "two.13", ""])
+def test_unparseable_pyxrt_is_refused(monkeypatch, bad):
+    monkeypatch.setenv("COCOTBPYNQ_PYXRT", bad)
+    with pytest.raises(ImportError, match="COCOTBPYNQ_PYXRT"):
+        importlib.reload(pynq_api)
+    monkeypatch.delenv("COCOTBPYNQ_PYXRT")
+    importlib.reload(pynq_api)
+
+
+@pytest.mark.parametrize("call,message", [("flush", "Buffer Flush Failed"),
+                                          ("invalidate", "Buffer Invalidate Failed"),
+                                          ("sync_to_device", "Buffer Flush Failed"),
+                                          ("sync_from_device", "Buffer Invalidate Failed")])
+@pytest.mark.parametrize("cacheable", [True, False])
+def test_pynq4_on_the_kv260s_pyxrt_cannot_sync(pynq, call, message, cacheable):
+    pynq(pyxrt="2.13.479")
+    buf = buffer.allocate((8,), np.uint64, cacheable=cacheable)
+    for target in (buf, buf[2:4]):
+        with pytest.raises(RuntimeError, match=message + ": sync\\(\\): incompatible function arguments"):
+            getattr(target, call)()
+
+
+def test_the_three_argument_sync_works_on_the_kv260s_pyxrt(pynq):
+    pynq(pyxrt="2.13.479")
+    buf = buffer.allocate((8,), np.uint64)
+    buf[:] = 7
+    buf.bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE, buf.bo.size(), 0)
+    assert list(buf._dram) == [7] * 8
+    buf._dram[:] = 9
+    buf.bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE, 16, 16)
+    assert list(buf) == [7, 7, 9, 9, 7, 7, 7, 7]
+    assert buf.bo.size() == 8192 and buf[2:].bo is buf.bo and buf[2:].offset == 16
+    with pytest.raises(RuntimeError, match="outside"):
+        buf.bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE, 8192, 8)
+
+
+def test_pynq3_syncs_ranges_on_any_pyxrt(pynq):
+    pynq("3.0.1", pyxrt="2.13.479")
+    buf = buffer.allocate((4,), np.uint64)
+    buf[:] = 3
+    buf[1:2].flush()
+    assert list(buf._dram) == [0, 3, 0, 0]
 
 
 def test_unknown_version_is_refused(monkeypatch):
