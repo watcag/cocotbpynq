@@ -9,15 +9,24 @@ Both packages (cocotbpynq and pynq-pr) are released together under one version f
 - RM `include_dirs` and `verilator_flags` in `reconfigurable_modules` reach the RM's build.
 - A partition can have several DMAs, one per AXI-Stream pair (`partition:` on the DMA's `sb` interfaces).
 - The DMA model streams beats of any TDATA width and keeps the AXI DMA simple-mode registers PYNQ reads (DMACR, DMASR, LENGTH). `allocate()` returns a buffer with `flush()`, `invalidate()` and `physical_address`, and models the CPU cache.
-
 - `cocotbpynq.xrt`: PYNQ host code for Alveo cards (`Overlay("design.xclbin")`, `allocate(..., target=ol.HBM0)`,
   `ol.<cu>.call/start/read/write`) runs against the RTL of the design's compute units. `make_top` writes the
   simulation top from the xclbin's metadata (AXI4-Stream connections wired, control and AXI4 master ports
   brought out); the overlay serves AXI4 masters from a model of the card's memory banks and drives each CU's
   AXI-Lite control port. `write_xclbin` writes a metadata-only xclbin to simulate before linking. Example:
   `examples/cocotbpynq/alveo_example`.
+- Embedded boards behave as PYNQ 4.0.0 by default (`cocotbpynq.pynq_api`; `COCOTBPYNQ_PYNQ_VERSION=3.0.1` for the
+  old behaviour). Off target (`COCOTBPYNQ_DEVICE_TREE` naming a device tree without `chosen/pynq_board`) the
+  first `Overlay`, `allocate` or `MMIO` raises PYNQ 4's `NameError` for `pyxrt`. Every full or partial load
+  writes `loaded.xclbin` into the test's current directory, as PYNQ 4's `_xrt_download` does on the board.
+  Buffers are at least 8 KiB, and DMA channels drop `_active_buffer` after `wait()`.
 
 ### Changed
+- A slice of an `allocate()` buffer is a view of the allocation (its physical address plus offset); `flush()` and
+  `invalidate()` of a slice sync its bytes on PYNQ 3 and the whole buffer on PYNQ 4 (they did nothing before), and a
+  DMA transfer of a slice reads or writes DRAM at the slice. `freebuffer()` (and leaving a `with` scope) unmaps the
+  buffer: syncing it, or a DMA of it, raises. `close()` warns as PYNQ does. `cocotbpynq.xrt` buffers raise after
+  `freebuffer()` as well.
 - `PRSystem.reconfigure()` waits up to 60 s for the new RM (was 10 s): a large netlist RM on the Vivado simulator can take longer to load.
 - The PR engine waits up to 600 s of wall-clock time for the simulation processes to start and for a shared-memory reconfigure (was 30 s), and `pr_reconfigure()` up to 50 ms of simulated time (was 5 ms): netlist RMs elaborate and run much more slowly than RTL. These are deadlock guards only; a healthy run is unaffected.
 

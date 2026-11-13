@@ -16,6 +16,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from . import pynq_api
 from .buffer import allocate
 from .dma import DMA
 from .mmio import MMIO

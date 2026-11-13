@@ -35,6 +35,7 @@ are released and both channels are halted.
 
 import cocotb
 import numpy as np
+from . import pynq_api
 from .dut import CocotbPynqBusInterface
 from cocotb.triggers import Event, RisingEdge, ReadOnly
 from cocotb.task import resume
@@ -174,10 +175,10 @@ class DMA_Channel():
             raise MemoryError(f"Unaligned transfer: start and nbytes must be multiples of the {self.beat_bytes}-byte stream beat.")
         if self.direction == "write" and hasattr(array, "flush"):
             array.flush()
-        mem = getattr(array, "_dram", None)
-        if mem is None:
-            mem = array
-        mem = mem.reshape(-1).view("u1")[start:start + nbytes]
+        if hasattr(array, "_dma_memory"):
+            mem = array._dma_memory(start, nbytes)      # DRAM at the buffer's (or slice's) address
+        else:
+            mem = array.reshape(-1).view("u1")[start:start + nbytes]
         self._active_buffer = array
         self._first_transfer = False
         self.sr &= ~(SR_IDLE | SR_INTERR | SR_IOC)
@@ -194,6 +195,8 @@ class DMA_Channel():
         if self.direction == "read" and hasattr(self._active_buffer, "invalidate"):
             self._active_buffer.invalidate()
         self.transferred = self.length
+        if pynq_api.PYNQ4:
+            self._active_buffer = None              # PYNQ 4.0 drops it after wait()
 
     def _done(self, status):
         self.sr |= status

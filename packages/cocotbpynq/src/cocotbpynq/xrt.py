@@ -481,24 +481,35 @@ class Memory:
 
     def allocate(self, shape, dtype):
         buf = Buffer(shape, dtype)
-        buf.banks, buf.memory = self.banks, self
+        buf.banks, buf.memory, buf._freed = self.banks, self, [False]   # shared with every slice
         buf.device_address = self.banks.alloc(self.desc, buf.nbytes)
         return buf
 
 
 class Buffer(np.ndarray):
-    """Host buffer mirrored in a card memory bank (slices map to their part of it)."""
+    """Host buffer mirrored in a card memory bank (slices map to their part of it).
+
+    As with watcag/PYNQ's XrtNativeDevice, a slice syncs exactly its own bytes, and after
+    ``freebuffer()`` (the XRT buffer object is deleted) syncing the buffer or a slice raises.
+    """
 
     def __array_finalize__(self, obj):
         if isinstance(obj, Buffer) and getattr(obj, "banks", None) is not None:
             self.banks, self.memory = obj.banks, obj.memory
+            self._freed = obj._freed
             self.device_address = obj.device_address + (self.__array_interface__["data"][0] -
                                                         obj.__array_interface__["data"][0])
 
+    def _live(self):
+        if getattr(self, "_freed", [False])[0]:
+            raise RuntimeError("buffer used after freebuffer(): its XRT buffer object is deleted")
+
     def sync_to_device(self):
+        self._live()
         self.banks.write(self.device_address, np.ascontiguousarray(self).tobytes())
 
     def sync_from_device(self):
+        self._live()
         self[...] = np.frombuffer(self.banks.read(self.device_address, self.nbytes), self.dtype).reshape(self.shape)
 
     flush, invalidate = sync_to_device, sync_from_device
@@ -508,7 +519,15 @@ class Buffer(np.ndarray):
         return self.device_address
 
     def freebuffer(self):
-        pass
+        if getattr(self, "banks", None) is not None:
+            self._freed[0] = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.freebuffer()
+        return False
 
 
 _overlay = None

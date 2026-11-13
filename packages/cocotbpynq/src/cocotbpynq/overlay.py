@@ -15,6 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from . import pynq_api
 from .dma import DMA
 from .dut import CocotbPynqDut
 import cocotb
@@ -75,7 +76,8 @@ class Overlay(HierarchyObject):
     bitfile_name : str
         Name of bitstream file. Used to determine hwh file with same name. Needed for parity with PYNQ
     """
-    def __init__(self, bitfile_name=None):
+    def __init__(self, bitfile_name=None, dtbo=None, download=True, **kwargs):
+        pynq_api.require_device("Overlay")
         bitstream_dir = os.getenv("HWH_LOCATION_DIR")
         if(not bitstream_dir):
             raise EnvironmentError("No HWH_LOCATION_DIR environment variable found")
@@ -125,6 +127,8 @@ class Overlay(HierarchyObject):
 
         # Create actual referenceable hierarchy structure recursively
         super().__init__(hierarchy_to_add)
+        if download:
+            pynq_api.xrt_download()       # PYNQ 4.0 writes loaded.xclbin into the cwd on every load
 
     def pr_download(self, partial_region, partial_bit, dtbo=None, program=True, icap=False):
         """Download a partial bitstream onto PL.
@@ -179,6 +183,8 @@ class Overlay(HierarchyObject):
                         await RisingEdge(cptop.clk)
 
         _do_reconfig()
+        if program:
+            pynq_api.xrt_download()       # a partial download goes through _xrt_download as well
 
     def chain(self, partition_names):
         """Route partitions in a pipeline via AXI-Stream switch.
