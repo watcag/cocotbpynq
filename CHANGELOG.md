@@ -22,9 +22,9 @@ Both packages (cocotbpynq and pynq-pr) are released together under one version f
   Buffers are at least 8 KiB, and DMA channels drop `_active_buffer` after `wait()`.
 - Buffers expose `bo` (a `pyxrt.bo` stand-in, `cocotbpynq.pyxrt`), `device` and `offset` as PYNQ's do, and PYNQ 4's
   `flush()`/`invalidate()` call `bo.sync(direction)` as `pl_server/xrt_device.py` does. `COCOTBPYNQ_PYXRT` is the
-  simulated board's pyxrt (default `2.13.479`, the KV260's): before XRT 2.16 pyxrt has only
-  `sync(direction, size, offset)`, so every flush or invalidate raises `Buffer Flush Failed` / `Buffer Invalidate
-  Failed` as on the board.
+  simulated board's pyxrt (default `2.16.204`): before XRT 2.16 pyxrt has only `sync(direction, size, offset)`, so
+  with e.g. `COCOTBPYNQ_PYXRT=2.13.479` (the Kria-PYNQ KV260 image) every flush or invalidate, and so every DMA
+  transfer, raises `Buffer Flush Failed` / `Buffer Invalidate Failed` as on that board.
 
 ### Changed
 - A slice of an `allocate()` buffer is a view of the allocation (its physical address plus offset); `flush()` and

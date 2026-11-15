@@ -33,8 +33,9 @@ differs where host code can notice:
 * ``DMA`` channels drop ``_active_buffer`` after ``wait()``.
 * ``buffer.flush()``/``invalidate()`` call ``bo.sync(direction)`` (pl_server/xrt_device.py), an overload
   pyxrt has only from XRT 2023.2 (2.16).  ``COCOTBPYNQ_PYXRT`` is the simulated board's pyxrt version,
-  default ``2.13.479`` (the KV260's XRT, whose pyxrt has only ``sync(direction, size, offset)``): there
-  every flush or invalidate raises ``RuntimeError: Buffer Flush Failed: sync(): incompatible function
+  default ``2.16.204`` (XRT 2023.2).  An image with an older XRT, e.g. ``2.13.479`` (Kria-PYNQ on the
+  KV260, whose pyxrt has only ``sync(direction, size, offset)``), makes
+  every flush or invalidate (and so every DMA transfer) raise ``RuntimeError: Buffer Flush Failed: sync(): incompatible function
   arguments ...`` (``Buffer Invalidate Failed``), as on the board.
 
 Alveo cards (``cocotbpynq.xrt``) follow watcag/PYNQ's XrtNativeDevice instead, which loads
@@ -49,8 +50,9 @@ if VERSION not in SUPPORTED:
     raise ImportError(f"COCOTBPYNQ_PYNQ_VERSION={VERSION!r}: cocotbpynq simulates PYNQ {' or '.join(SUPPORTED)}")
 PYNQ4 = VERSION.split(".")[0] == "4"
 
-# The simulated board's pyxrt: the KV260's is built against XRT 2.13.479 (checked 2026-11-12).
-PYXRT = os.environ.get("COCOTBPYNQ_PYXRT", "2.13.479")
+# The simulated board's pyxrt.  Default: one with bo.sync(direction), which PYNQ 4.0 needs.  Give the
+# board's XRT version (e.g. 2.13.479 for the KV260's image) to reproduce an older pyxrt.
+PYXRT = os.environ.get("COCOTBPYNQ_PYXRT", "2.16.204")
 try:
     _PYXRT_VERSION = tuple(int(p) for p in PYXRT.split("."))
 except ValueError:

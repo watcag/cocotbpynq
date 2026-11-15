@@ -43,10 +43,10 @@ def test_default_is_pynq4_on_a_configured_board(pynq):
     assert api.VERSION == "4.0.0" and api.PYNQ4 and api.on_target()
 
 
-def test_default_pyxrt_is_the_kv260s(monkeypatch):
+def test_default_pyxrt_has_whole_buffer_sync(monkeypatch):
     monkeypatch.delenv("COCOTBPYNQ_PYXRT", raising=False)
     api = importlib.reload(pynq_api)
-    assert api.PYXRT == "2.13.479" and not api.PYXRT_WHOLE_SYNC
+    assert api.PYXRT == "2.16.204" and api.PYXRT_WHOLE_SYNC
 
 
 @pytest.mark.parametrize("bad", ["2", "two.13", ""])

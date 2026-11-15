@@ -52,7 +52,7 @@ The simulated board behaves as PYNQ 4.0.0 by default. Environment variables choo
 | Variable | Default | Effect |
 |---|---|---|
 | `COCOTBPYNQ_PYNQ_VERSION` | `4.0.0` | `3.0.1` for PYNQ 3 behaviour (e.g. PYNQ-Z1/Z2, which PYNQ 4 does not support). |
-| `COCOTBPYNQ_PYXRT` | `2.13.479` | XRT version of the board's pyxrt. Before 2.16, pyxrt has no `bo.sync(direction)`, so PYNQ 4's `flush()`/`invalidate()` raise as on such a board; give `2.16` or later for an image with a newer XRT. |
+| `COCOTBPYNQ_PYXRT` | `2.16.204` | XRT version of the board's pyxrt. Before 2.16, pyxrt has no `bo.sync(direction)`, so PYNQ 4's `flush()`/`invalidate()`, and with them every DMA transfer, raise as on such a board: give `2.13.479` to simulate the Kria-PYNQ KV260 image. |
 | `COCOTBPYNQ_DEVICE_TREE` | unset (configured board) | A directory standing for `/proc/device-tree`; without `chosen/pynq_board`, PYNQ 4 is off target and opening the device raises `NameError` for `pyxrt`. |
 
 Under PYNQ 4, each full or partial load writes `loaded.xclbin` into the current directory, buffers are at
