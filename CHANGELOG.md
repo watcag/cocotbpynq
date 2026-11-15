@@ -10,6 +10,13 @@ Both packages (cocotbpynq and pynq-pr) are released together under one version f
 - A partition can have several DMAs, one per AXI-Stream pair (`partition:` on the DMA's `sb` interfaces).
 - The DMA model streams beats of any TDATA width and keeps the AXI DMA simple-mode registers PYNQ reads (DMACR, DMASR, LENGTH). `allocate()` returns a buffer with `flush()`, `invalidate()` and `physical_address`, and models the CPU cache.
 
+- `cocotbpynq.xrt`: PYNQ host code for Alveo cards (`Overlay("design.xclbin")`, `allocate(..., target=ol.HBM0)`,
+  `ol.<cu>.call/start/read/write`) runs against the RTL of the design's compute units. `make_top` writes the
+  simulation top from the xclbin's metadata (AXI4-Stream connections wired, control and AXI4 master ports
+  brought out); the overlay serves AXI4 masters from a model of the card's memory banks and drives each CU's
+  AXI-Lite control port. `write_xclbin` writes a metadata-only xclbin to simulate before linking. Example:
+  `examples/cocotbpynq/alveo_example`.
+
 ### Changed
 - `PRSystem.reconfigure()` waits up to 60 s for the new RM (was 10 s): a large netlist RM on the Vivado simulator can take longer to load.
 

@@ -6,7 +6,7 @@ This repository holds two packages, released together under one version:
 
 | Package | What it does | Where it runs |
 |---|---|---|
-| [cocotbpynq](packages/cocotbpynq/) | Runs unmodified PYNQ host code (`Overlay`, `MMIO`, DMA) against your RTL in a cocotb/Verilator simulation, including swap-aware partial-reconfiguration co-simulation | host |
+| [cocotbpynq](packages/cocotbpynq/) | Runs unmodified PYNQ host code (`Overlay`, `MMIO`, DMA; on Alveo cards `Overlay` on an xclbin, `allocate` in HBM/DDR banks, kernel calls) against your RTL in a cocotb/Verilator simulation, including swap-aware partial-reconfiguration co-simulation | host |
 | [pynq-pr](packages/pynq-pr/) | Generates a Vivado DFX design and partial bitstreams from one YAML file, simulates module swaps (with cocotbpynq), and loads partial bitstreams on the board | host (build, sim) and PYNQ board (runtime) |
 
 ## Which one do I need?
@@ -46,7 +46,7 @@ For development, install both packages in editable mode: `pip install -e package
 ```
 packages/cocotbpynq/   cocotbpynq package (src/, pyproject.toml, README)
 packages/pynq-pr/      pynq-pr package
-examples/cocotbpynq/   partial-reconfiguration co-simulation examples
+examples/cocotbpynq/   co-simulation examples (partial reconfiguration; alveo_example: an Alveo/XRT design)
 examples/pynq-pr/      DFX examples: build, simulate, deploy
 docs/pynq-pr/          tutorial, KV260 notes, common errors
 scripts/               release tooling (bump.py, version and wheel checks)
