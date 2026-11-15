@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 from cocotbpynq import allocate, device_memory, set_cache_model
-from cocotbpynq.axi_mem import HpPortConfig, _beat_addrs
+from cocotbpynq.axi_mem import AxiBus, AxiMemory, HpPortConfig, _beat_addrs
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "axi_master_example"
 
@@ -35,6 +35,51 @@ def test_parse():
     assert "max_reads=4" in c.describe()
     with pytest.raises(ValueError):
         HpPortConfig.parse("nonsense=1")
+
+
+def _write_port():
+    class Signal:
+        def __init__(self, width=1, value=0):
+            self.width, self.value = width, value
+
+        def __len__(self):
+            return self.width
+
+    sig = {k: Signal() for k in ("AWVALID", "AWREADY", "AWADDR", "WVALID", "WREADY", "BVALID", "BREADY", "WLAST")}
+    sig["WDATA"], sig["WSTRB"] = Signal(128), Signal(16, 0xFFFF)
+    mem = AxiMemory(clk=None)
+    port = mem.add_port("HP0", AxiBus(sig), HpPortConfig())
+    sig["WVALID"].value = sig["WLAST"].value = 1
+    return port, sig, mem
+
+
+@pytest.mark.parametrize("signal,value", [("WVALID", 0), ("WDATA", 1 << 100), ("WSTRB", 0xFFFE), ("WLAST", 0)])
+def test_write_stability_under_backpressure(signal, value):
+    port, sig, mem = _write_port()
+    port.drive(0)                       # no AW and no early-W slots: WREADY stays low
+    port.sample(0)
+    sig[signal].value = value
+    port.drive(1)
+    port.sample(1)
+    assert len(mem.errors) == 1
+    expected = "WVALID dropped" if signal == "WVALID" else "W payload changed"
+    assert expected in mem.errors[0][2]
+
+
+def test_write_stable_until_accepted_then_next_payload():
+    port, sig, mem = _write_port()
+    for cyc in range(3):
+        port.drive(cyc)
+        port.sample(cyc)
+    port.cfg.w_before_aw = 2
+    port.drive(3)                       # accept the held beat
+    port.sample(3)
+    sig["WDATA"].value = 1 << 100       # a new beat may change any data bit after acceptance
+    port.drive(4)
+    port.sample(4)
+    assert not mem.errors
+    assert port.stats["w_beats"] == 2
+    assert port.wpend == [(0, 0xFFFF, True), (1 << 100, 0xFFFF, True)]
 
 
 def test_cache_model():

@@ -301,7 +301,7 @@ class AxiSlavePort:
         self.bcur = None
         self.stall = 0
         self.drv = {}                     # last driven value per signal
-        self.prev_ar = self.prev_aw = None   # (payload) of a VALID waiting for READY
+        self.prev_ar = self.prev_aw = self.prev_w = None   # payload of a VALID waiting for READY
         self.rdy = dict(ar=False, aw=False, w=False)
 
     # -- outputs
@@ -447,16 +447,26 @@ class AxiSlavePort:
             elif self.prev_aw is not None:
                 self.owner.error(cyc, self.name, "AWVALID dropped before AWREADY")
                 self.prev_aw = None
-            if self.rdy["w"] and _bit(s["WVALID"]):
+            if _bit(s["WVALID"]):
                 data = _uint(s["WDATA"])
                 strb = _uint(s["WSTRB"], (1 << self.nb) - 1) if "WSTRB" in s else (1 << self.nb) - 1
                 last = _bit(s["WLAST"]) if "WLAST" in s else True
-                self.stats["w_beats"] += 1
-                tgt = next((x for x in self.awq if not x.wdone), None)
-                if tgt is None:
-                    self.wpend.append((data, strb, last))
+                pay = (data, strb, last)
+                if self.prev_w is not None and self.prev_w != pay:
+                    self.owner.error(cyc, self.name, "W payload changed while waiting for WREADY")
+                if self.rdy["w"]:
+                    self.prev_w = None
+                    self.stats["w_beats"] += 1
+                    tgt = next((x for x in self.awq if not x.wdone), None)
+                    if tgt is None:
+                        self.wpend.append(pay)
+                    else:
+                        self._wbeat(cyc, tgt, *pay)
                 else:
-                    self._wbeat(cyc, tgt, data, strb, last)
+                    self.prev_w = pay
+            elif self.prev_w is not None:
+                self.owner.error(cyc, self.name, "WVALID dropped before WREADY")
+                self.prev_w = None
             if aw_hs:
                 addr, ln, sz, bt, id_ = aw_hs
                 self._check_burst(cyc, "AW", addr, ln + 1, sz, bt)
