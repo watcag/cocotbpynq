@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 from cocotb_tools.runner import get_results, get_runner
+import cocotb_tools.runner as cocotb_runner
 
 from cocotbpynq._toolchain import ensure_verilator
 
@@ -27,18 +28,22 @@ STRESS = ("r_latency=20,r_jitter=200,b_latency=10,b_jitter=100,arready_low=0.3,a
 def main(hp: str = "", seed: int = 0, build_dir: str | None = None) -> int:
     hp = STRESS if hp == "stress" else hp
     ensure_verilator()
+    jobs = int(os.environ.get("COCOTBPYNQ_BUILD_J", "1"))
+    if jobs < 1:
+        raise ValueError("COCOTBPYNQ_BUILD_J must be positive")
+    cocotb_runner.MAX_PARALLEL_BUILD_JOBS = jobs
     build = Path(build_dir or THIS_DIR / "sim_build")
     runner = get_runner("verilator")
     runner.build(sources=[THIS_DIR / "rtl" / "memcpy_axi.v"], hdl_toplevel="memcpy_axi", build_dir=build,
-                 timescale=("1ns", "1ps"))
+                 timescale=("1ns", "1ps"), build_args=["-j", str(jobs)])
     sys.path.insert(0, str(THIS_DIR))
     results = runner.test(hdl_toplevel="memcpy_axi", test_module="test_pynq", test_dir=THIS_DIR, build_dir=build,
                           results_xml=str(build / "results.xml"),
                           extra_env={"HWH_LOCATION_DIR": str(THIS_DIR), "COCOTB_SYS_ARGV": " ".join(sys.argv),
                                      "COCOTBPYNQ_HP": hp, "COCOTBPYNQ_AXI_SEED": str(seed),
                                      "PYTHONPATH": os.pathsep.join([str(THIS_DIR), os.environ.get("PYTHONPATH", "")])})
-    _, failed = get_results(results)
-    return 1 if failed else 0
+    tests, failed = get_results(results)
+    return 0 if tests > 0 and failed == 0 else 1
 
 
 if __name__ == "__main__":
