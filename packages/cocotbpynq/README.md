@@ -46,6 +46,19 @@ The HWH file can be generated independently of the bitstream with this Vivado Tc
 
 This avoids a full bitstream build. Regenerate the HWH file only when the block design changes.
 
+### Simulated PYNQ release (embedded boards)
+The simulated board behaves as PYNQ 4.0.0 by default. Environment variables choose what it runs:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `COCOTBPYNQ_PYNQ_VERSION` | `4.0.0` | `3.0.1` for PYNQ 3 behaviour (e.g. PYNQ-Z1/Z2, which PYNQ 4 does not support). |
+| `COCOTBPYNQ_PYXRT` | `2.13.479` | XRT version of the board's pyxrt. Before 2.16, pyxrt has no `bo.sync(direction)`, so PYNQ 4's `flush()`/`invalidate()` raise as on such a board; give `2.16` or later for an image with a newer XRT. |
+| `COCOTBPYNQ_DEVICE_TREE` | unset (configured board) | A directory standing for `/proc/device-tree`; without `chosen/pynq_board`, PYNQ 4 is off target and opening the device raises `NameError` for `pyxrt`. |
+
+Under PYNQ 4, each full or partial load writes `loaded.xclbin` into the current directory, buffers are at
+least 8 KiB, and a slice's `flush()`/`invalidate()` syncs the whole buffer. Host code that works around an
+old pyxrt with `buf.bo.sync(direction, size, offset)` runs unchanged against `cocotbpynq.pyxrt`.
+
 ## Alveo cards (XRT)
 `cocotbpynq.xrt` runs PYNQ host code written for an Alveo card against the RTL of the design's compute units (CUs). The host code changes only its imports, as in the sample:
 
