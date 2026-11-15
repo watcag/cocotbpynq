@@ -16,6 +16,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import cocotb
+from . import pynq_api
 from .dut import CocotbPynqDut
 import numpy as np
 from cocotb.triggers import RisingEdge, ReadOnly
@@ -35,8 +36,9 @@ class MMIO():
     length : int
         Size of MMIO's address range
     """
-    def __init__(self, base_addr, length=4):
+    def __init__(self, base_addr, length=4, device=None, **kwargs):
         from .overlay import hwh_tree, cptop
+        pynq_api.require_device("MMIO")
         self.base_addr = base_addr
         self.length = length # Number of accessible bytes
         self.cpdut: CocotbPynqDut = cptop

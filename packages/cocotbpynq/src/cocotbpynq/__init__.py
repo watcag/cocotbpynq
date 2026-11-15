@@ -16,12 +16,18 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from . import pynq_api, pyxrt
 from .buffer import allocate
 from .dma import DMA
 from .mmio import MMIO
 from .overlay import DefaultIP, Overlay, hwh_tree, cptop
 from .dut import CocotbPynqDut
 from .simulator import synctest, argv
+
+class Device:
+    """pynq.Device: ``Device.active_device`` is the simulated embedded device (flush/invalidate)."""
+    from .buffer import DEVICE as active_device
+
 
 class PL:
     def reset(self):
