@@ -57,6 +57,42 @@ The HWH file can be generated independently of the bitstream with this Vivado Tc
 
 This avoids a full bitstream build. Regenerate the HWH file only when the block design changes.
 
+## PL masters reading and writing PS DDR (HP ports)
+An RTL AXI4 master port (an accelerator that fetches its own data, e.g. through `S_AXI_HP0_FPD`) reads and writes the
+buffers from `allocate` directly. `Overlay` attaches a slave port model (`cocotbpynq.axi_mem`) to every AXI4 master bus
+interface of the DUT in the HWH; Zynq-7000 (`processing_system7`) and Zynq UltraScale+ (`zynq_ultra_ps_e`, e.g. KV260)
+block designs both work, and `Overlay.ip_dict` lists the PS address map as PYNQ does.
+
+* **Cache semantics.** A cacheable buffer has a CPU view (the array) and a device view (DRAM). The PL sees host writes
+  only after `flush()` / `sync_to_device()`, and the host sees PL writes only after `invalidate()` /
+  `sync_from_device()`, so a missing flush or invalidate shows the same stale data as on the board.
+  `set_cache_model("strict")` (or `COCOTBPYNQ_CACHE=strict`) gives non-cacheable buffers the same split, to check a
+  driver that relies on non-cacheable memory. `device_memory.stale_reads` counts PL reads of unflushed bytes.
+* **HP-port timing** (`HpPortConfig`): outstanding read / write limits (8 each, the AFI reset value), read and write
+  response latency with a random extra per burst, ARREADY / AWREADY / WREADY back-pressure, gaps between read beats,
+  write data before its address, reordering of read bursts and write responses across IDs, and stalls that freeze a
+  port for a random number of cycles. Set it with `cocotbpynq.axi_mem.default_config` / `port_configs` before the
+  `Overlay`, or with `COCOTBPYNQ_HP="r_jitter=200,reorder=1"` (`COCOTBPYNQ_HP_<PORT>` for one port, by DUT interface or
+  PS port name); `COCOTBPYNQ_AXI_SEED` seeds the random timing. On Zynq UltraScale+, PYNQ code that writes the AFI FM
+  RDISSUE / WRISSUE registers (`MMIO(0xFD380000, 0x20).write(0x04, n - 1)`) sets the matching port's limit, as on the board.
+* **Checks.** The master's AXI protocol errors (VALID dropped before READY, payload changed while waiting, WLAST on the
+  wrong beat, a burst over a 4 KB boundary, an address outside every buffer) are kept in `axi_mem.memory.errors`;
+  `axi_mem.memory.outstanding()` and `idle()` tell what is in flight, `stats()` counts bursts, beats and stalls.
+* **Host timing.** `cocotbpynq.host` adds idle cycles before MMIO accesses (`mmio_cycles`, and `write_delay` per
+  register offset, e.g. a gap before a start bit), or advances the simulation by the real time the host code took
+  between accesses (`compute = "wall"`). `cocotbpynq.simtime` is a stand-in for the `time` module in simulated
+  seconds, so host timeouts and timings follow the DUT clock. `Clocks` and `Interrupt` stand in for PYNQ's.
+* A DUT with several clock ports (e.g. a 2x array clock) gets every clock at its HWH frequency ratio, edges aligned.
+
+`examples/axi_master_example` is a small AXI4 memcpy engine on a Zynq UltraScale+ HWH, driven by unmodified PYNQ code
+(`test_pynq.py`): a copy with flush and invalidate, one without the flush and one without the invalidate.
+
+```sh
+cd examples/axi_master_example && python run.py          # the HP port's reset timing
+python run.py stress                                     # random latency, back-pressure, gaps, stalls, reordering
+pytest tests/test_axi_mem.py                             # from the repository root
+```
+
 ## Partial-reconfiguration simulation
 `examples/*_pr_example` contains six PR designs (AXI-Lite, dual DMA, stream, AXI-Stream switch, matmul pipeline, video pipeline). Each one describes the static region and reconfigurable modules in `pr_config.yaml` and runs an unmodified PYNQ-style test (`test_pynq.py`) that calls `overlay.pr_download(...)` to swap modules mid-simulation:
 

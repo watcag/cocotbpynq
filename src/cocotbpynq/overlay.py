@@ -75,7 +75,7 @@ class Overlay(HierarchyObject):
     bitfile_name : str
         Name of bitstream file. Used to determine hwh file with same name. Needed for parity with PYNQ
     """
-    def __init__(self, bitfile_name=None):
+    def __init__(self, bitfile_name=None, download=True, **kwargs):
         bitstream_dir = os.getenv("HWH_LOCATION_DIR")
         if(not bitstream_dir):
             raise EnvironmentError("No HWH_LOCATION_DIR environment variable found")
@@ -101,10 +101,16 @@ class Overlay(HierarchyObject):
         global cptop
         cptop = CocotbPynqDut(cocotb.top, dut_module_el, True, skip_modtype_check=pr_mode)
 
-        # discover all hierarchichally referenceble instances, as per how pynq library discovers them (for Zynq)
-        processing_system_el = hwh_tree.find(f"./MODULES/MODULE[@MODTYPE='processing_system7']")
-        if (processing_system_el is None):
-            raise RuntimeError("No processing_system7 found. Please check that the HWH file you have generated is for a Zynq device. Only Zynq devices are supported at this time")
+        # discover all hierarchichally referenceble instances, as per how pynq library discovers them
+        # (Zynq-7000 processing_system7, Zynq UltraScale+ zynq_ultra_ps_e)
+        from .ps import ps_module, ip_dict, simtime
+        processing_system_el = ps_module(hwh_tree)
+        self.ip_dict = ip_dict(hwh_tree)
+        self.bitfile_name = bitstream_path
+        clk_el = dut_module_el.find("./PORTS/PORT[@SIGIS='clk']")
+        if clk_el is not None and clk_el.get("CLKFREQUENCY"):
+            simtime.clock_hz = float(clk_el.get("CLKFREQUENCY"))
+        self.memory = self._attach_masters(dut_module_el)
         instances_to_add = []
         for memrange in processing_system_el.findall("./MEMORYMAP/MEMRANGE"):
             instances_to_add.append(memrange.get("INSTANCE"))
@@ -125,6 +131,34 @@ class Overlay(HierarchyObject):
 
         # Create actual referenceable hierarchy structure recursively
         super().__init__(hierarchy_to_add)
+
+    def _attach_masters(self, dut_module_el):
+        """An axi_mem slave port into the device memory (the allocated buffers) for every AXI4 master bus
+        interface of the DUT, with the timing of cocotbpynq.axi_mem.config_for (by the interface name or the PS
+        slave interface it connects to); on Zynq UltraScale+ the AFI FM registers of those PS ports set their
+        outstanding limits. Returns the AxiMemory (None if the DUT has no AXI4 master)."""
+        from . import axi_mem
+        from .ps import AFI_BASES, AfiRegisters, afi_blocks, ps_slave_port
+        masters = [b for b in cptop.bus_interfaces.values()
+                   if b.type == "MASTER" and ":aximm:" in b.vlnv and hasattr(b, "ARVALID") | hasattr(b, "AWVALID")]
+        afi_blocks.clear()
+        if not masters:
+            axi_mem.memory = None
+            return None
+        mem = axi_mem.AxiMemory(cptop.clk, cptop.rst, cptop.rst_active_low)
+        by_ps = {}
+        for b in masters:
+            ps_port = ps_slave_port(hwh_tree, b.busname)
+            port = mem.add_port(b.portname, axi_mem.AxiBus.from_businterface(b),
+                                axi_mem.config_for(b.portname, ps_port))
+            port.ps_port = ps_port
+            by_ps.setdefault(ps_port, []).append(port)
+        for ps_port, ports in by_ps.items():
+            if ps_port in AFI_BASES:
+                afi_blocks[AFI_BASES[ps_port]] = AfiRegisters(ps_port, ports)
+        mem.start()
+        axi_mem.memory = mem
+        return mem
 
     def pr_download(self, partial_region, partial_bit, dtbo=None, program=True, icap=False):
         """Download a partial bitstream onto PL.

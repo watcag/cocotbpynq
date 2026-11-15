@@ -16,7 +16,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from .buffer import allocate
+from .buffer import allocate, set_cache_model
+from . import axi_mem
+from .axi_mem import AxiBus, AxiMemory, HpPortConfig, device_memory
+from .ps import Clocks, Interrupt, host, simtime
 from .dma import DMA
 from .mmio import MMIO
 from .overlay import DefaultIP, Overlay, hwh_tree, cptop

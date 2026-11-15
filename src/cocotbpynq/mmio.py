@@ -37,21 +37,28 @@ class MMIO():
     """
     def __init__(self, base_addr, length=4):
         from .overlay import hwh_tree, cptop
+        from .ps import afi_blocks, ps_module
         self.base_addr = base_addr
         self.length = length # Number of accessible bytes
         self.cpdut: CocotbPynqDut = cptop
-        processing_system_el = hwh_tree.find("./MODULES/MODULE[@MODTYPE='processing_system7']")
-        if (processing_system_el is None):
-            raise RuntimeError("No processing_system7 found. Please check that the HWH file you have generated is for a Zynq device. Only Zynq devices are supported at this time")
+        # PS registers modelled in Python (Zynq UltraScale+ AFI FM: the HP port issuing limits)
+        self.ps_regs = None
+        for base, blk in afi_blocks.items():
+            if base <= base_addr and base_addr + length <= base + 0x10000:
+                self.ps_regs, self.ps_off = blk, base_addr - base
+                return
+        processing_system_el = ps_module(hwh_tree)
         mmio_memrange_el = None
         for memrange_el in processing_system_el.findall("./MEMORYMAP/MEMRANGE"):
             if(memrange_el.get("INSTANCE") != self.cpdut.instance_name):
                 continue
-            if(int(memrange_el.get("BASEVALUE"),16) > base_addr) | (int(memrange_el.get("HIGHVALUE"),16) < base_addr+length):
+            if(int(memrange_el.get("BASEVALUE"),16) > base_addr) | (int(memrange_el.get("HIGHVALUE"),16) < base_addr+length-1):
                 continue
             mmio_memrange_el = memrange_el
         if(mmio_memrange_el == None):
             raise RuntimeError("No MMIO block found attached to DUT for that memory range")
+        # a window inside the DUT's range: offsets are relative to base_addr
+        self.window = base_addr - int(mmio_memrange_el.get("BASEVALUE"), 16)
         mmio_bus_interface_name = mmio_memrange_el.get("SLAVEBUSINTERFACE")
         self.cpbus = self.cpdut.bus_interfaces[mmio_bus_interface_name]
         self.cpbus.ARVALID.value = 0b0
@@ -92,7 +99,17 @@ class MMIO():
             A list of data read out from MMIO
 
         """
+        from .ps import host
+        if self.ps_regs is not None:
+            return self.ps_regs.read(self.ps_off + offset)
         await self.cpdut.await_reset()
+        await host.wait(self.cpdut, offset)
+        try:
+            return await self._read(offset, length, word_order)
+        finally:
+            host.done()
+
+    async def _read(self, offset, length, word_order):
         if length not in [1, 2, 4, 8]:
             raise ValueError(
                 "MMIO currently only supports " "1, 2, 4 and 8-byte reads."
@@ -134,15 +151,24 @@ class MMIO():
         None
 
         """
+        from .ps import host
+        if self.ps_regs is not None:
+            return self.ps_regs.write(self.ps_off + offset, data)
         await self.cpdut.await_reset()
         if offset < 0:
             raise ValueError("Offset cannot be negative.")
 
         if offset % 4:
             raise MemoryError("Unaligned write: offset must be multiple of 4.")
+        await host.wait(self.cpdut, offset, data if type(data) is int else None, write=True)
+        try:
+            await self._write(offset, data)
+        finally:
+            host.done()
 
+    async def _write(self, offset, data):
         if type(data) is int:
-            await self.single_write_axi_lite(offset, data)
+            await self.single_write_axi_lite(offset, data & 0xFFFFFFFF)
         elif type(data) is bytes:
             length = len(data)
             num_words = length >> 2
@@ -150,7 +176,7 @@ class MMIO():
                 raise MemoryError("Unaligned write: data length must be multiple of 4.")
             buf = np.frombuffer(data, np.uint32, num_words, 0)
             for i in range(len(buf)):
-                await self.single_write_axi_lite(offset + 4*i, data)
+                await self.single_write_axi_lite(offset + 4*i, int(buf[i]))
         else:
             raise ValueError("Data type must be int or bytes.")
         
@@ -171,7 +197,7 @@ class MMIO():
         """
         # Address and data together: an AXI master must not wait for AWREADY
         # before asserting WVALID, and a slave may wait for both valids.
-        self.cpbus.AWADDR.value = offset
+        self.cpbus.AWADDR.value = self.window + offset
         self.cpbus.AWVALID.value = 0b1
         self.cpbus.WDATA.value = data
         self.cpbus.WSTRB.value = 0xF
@@ -218,7 +244,7 @@ class MMIO():
 
         """
         # Assert address
-        self.cpbus.ARADDR.value = offset
+        self.cpbus.ARADDR.value = self.window + offset
         self.cpbus.ARVALID.value = 0b1
         await ReadOnly()
         periph_addr_ready = self.cpbus.ARREADY.value

@@ -37,13 +37,24 @@ class CocotbPynqDut:
         self.done_reset.clear()
 
         # Automatically find dut clk/reset names and reset polarity from HWH
-        clk_el = dut_module_el.find("./PORTS/PORT[@SIGIS='clk']")
+        clk_els = dut_module_el.findall("./PORTS/PORT[@SIGIS='clk']")
         rst_el = dut_module_el.find("./PORTS/PORT[@SIGIS='rst']")
-        self.clk = getattr(self.dut, clk_el.get("NAME"))
+        self.clk = getattr(self.dut, clk_els[0].get("NAME"))
         self.rst = getattr(self.dut, rst_el.get("NAME"))
         self.rst_active_low = (rst_el.get("POLARITY") == "ACTIVE_LOW")
-        # Start common signals
+        # Start common signals: the first clock has a period of 1000 steps; every other clock port of the
+        # module (e.g. a 2x array clock) runs at its CLKFREQUENCY ratio to the first, rising edges aligned
+        f0 = float(clk_els[0].get("CLKFREQUENCY") or 0)
+        self.clocks = {clk_els[0].get("NAME"): 1000}
         cocotb.start_soon(Clock(self.clk, 1000, 'step').start())
+        for el in clk_els[1:]:
+            f = float(el.get("CLKFREQUENCY") or 0)
+            period = int(round(1000 * f0 / f)) if f0 and f else 1000
+            if period % 2:
+                raise ValueError(f"clock {el.get('NAME')}: {f} Hz gives an odd period ({period} steps) at "
+                                 f"{f0} Hz = 1000 steps")
+            self.clocks[el.get("NAME")] = period
+            cocotb.start_soon(Clock(getattr(self.dut, el.get("NAME")), period, 'step').start())
         if(reset_on_init):
             # Reset dut for 3 cycles, then wait 1 cycle before allowing anyone to touch dut
             cocotb.start_soon(self.reset_dut(3, 1))
@@ -53,7 +64,7 @@ class CocotbPynqDut:
     async def reset_dut(self, reset_cycles: int, waiting_cycles: int):
         self.done_reset.clear()
         self.rst.value = not self.rst_active_low
-        await ClockCycles(self.dut.clk, reset_cycles)
+        await ClockCycles(self.clk, reset_cycles)
         self.rst.value = self.rst_active_low
         self.rst._log.info("Reset complete")
         await ClockCycles(self.clk, waiting_cycles)
@@ -85,5 +96,8 @@ class CocotbPynqBusInterface:
         self.cpdut = cpdut
         self.busname = bus_interface_el.get("BUSNAME")
         self.portname = bus_interface_el.get("NAME")
+        self.type = bus_interface_el.get("TYPE")              # MASTER / SLAVE / INITIATOR / TARGET
+        self.vlnv = bus_interface_el.get("VLNV", "")
+        self.params = {p.get("NAME"): p.get("VALUE") for p in bus_interface_el.findall("./PARAMETER")}
         for portmap in bus_interface_el.findall("./PORTMAPS/PORTMAP"):
             self.__setattr__(portmap.get("LOGICAL"), cpdut.dut.__getattr__(portmap.get("PHYSICAL")))
