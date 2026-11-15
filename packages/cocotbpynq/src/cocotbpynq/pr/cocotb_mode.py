@@ -152,7 +152,7 @@ def _get_ctrl_mailbox() -> CtrlMailbox:
     return CtrlMailbox(path, create=False)
 
 
-async def pr_reconfigure(partition: str, rm: str, timeout_ns: float = 5_000_000, poll_ns: int = 100):
+async def pr_reconfigure(partition: str, rm: str, timeout_ns: float = 50_000_000, poll_ns: int = 100):
     """
     Async reconfiguration for use inside plain cocotb @test coroutines.
 

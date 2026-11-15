@@ -76,7 +76,7 @@ class SimulationProcessManager:
         rm_binaries: Dict[str, str],
         partition_configs: List[Dict[str, Any]],
         initial_rm_map: Dict[str, str],
-        timeout: float = 30.0,
+        timeout: float = 600.0,
     ) -> SharedMemoryInterface:
         """
         Start the simulation: create shared memory, launch all processes.
@@ -250,7 +250,7 @@ class SimulationProcessManager:
         partition_name: str,
         new_rm_name: str,
         new_rm_binary: str,
-        timeout: float = 30.0,
+        timeout: float = 600.0,
     ):
         """
         Reconfigure a partition: kill old RM, start new RM.

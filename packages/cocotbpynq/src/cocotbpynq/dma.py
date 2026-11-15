@@ -15,12 +15,33 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+"""AXI DMA (simple mode) as PYNQ's pynq.lib.dma.DMA sees it.
+
+Each channel streams TDATA-wide beats (32, 64, 128, ... bits; the width is
+read from the bus) from or into the buffer, and keeps the PG021 registers
+PYNQ reads: DMACR, DMASR (Halted, Idle, DMAIntErr, IOC) and LENGTH.  Both
+channels share one register file, ``channel._mmio``, at PYNQ's offsets (MM2S
+at 0x00, S2MM at 0x30), so ``channel.idle``, ``channel.error``,
+``channel.running`` and direct ``_mmio`` reads and writes behave as on the
+board.  Each register access takes one clock, so a host polling loop advances
+the simulation.
+
+S2MM stops at TLAST or when the buffer length is reached; without TLAST by
+then it flags DMAIntErr and halts (PG021 simple mode).  After completion the
+S2MM LENGTH register holds the bytes actually written.  Writing DMACR.Reset
+(bit 2) to either channel resets both: transfers in flight stop, the streams
+are released and both channels are halted.
+"""
+
 import cocotb
-from .dut import CocotbPynqBusInterface, CocotbPynqDut
-from cocotb.triggers import Event, RisingEdge, ReadOnly
 import numpy as np
-from threading import Lock
+from .dut import CocotbPynqBusInterface
+from cocotb.triggers import Event, RisingEdge, ReadOnly
 from cocotb.task import resume
+
+MAX_C_SG_LENGTH_WIDTH = 26
+SR_HALTED, SR_IDLE, SR_INTERR, SR_IOC = 0x1, 0x2, 0x10, 0x1000
+
 
 class DMA:
     def __init__(self, cp_businterfaces, axi_dma_el):
@@ -37,84 +58,201 @@ class DMA:
                     if (bus_interface_el.get("TYPE") == "INITIATOR"):
                         cp_write_bus = cpbus_interface
                         if(cp_read_bus is not None): break
-                    elif (bus_interface_el.get("TYPE") == "TARGET"):    
+                    elif (bus_interface_el.get("TYPE") == "TARGET"):
                         cp_read_bus = cpbus_interface
                         if(cp_write_bus is not None): break
 
+        width = MAX_C_SG_LENGTH_WIDTH
+        for p in axi_dma_el.findall("./PARAMETERS/PARAMETER"):
+            if p.get("NAME", "").lower() == "c_sg_length_width":
+                width = int(p.get("VALUE"))
+        self.buffer_max_size = (1 << width) - 1
+
+        self.mmio = _Registers()
         if(cp_write_bus != None):
-            self.sendchannel = DMA_Channel(cp_write_bus, "write")
+            self.sendchannel = DMA_Channel(cp_write_bus, "write", self.mmio, self.buffer_max_size)
         if(cp_read_bus != None):
-            self.recvchannel = DMA_Channel(cp_read_bus, "read")
+            self.recvchannel = DMA_Channel(cp_read_bus, "read", self.mmio, self.buffer_max_size)
+
+
+class _Registers:
+    """Register file of one AXI DMA, shared by its channels (PYNQ's DMA.mmio)."""
+
+    def __init__(self):
+        self.channels = {}
+
+    def _split(self, offset):
+        base = 0x30 if offset >= 0x30 else 0x00
+        if base not in self.channels:
+            raise ValueError(f"no DMA channel at offset {offset:#x}")
+        return self.channels[base], offset - base
+
+    @resume
+    async def read(self, offset=0, length=4):
+        ch, reg = self._split(offset)
+        await RisingEdge(ch.cpbus.cpdut.clk)
+        if reg == 0x00:
+            return ch.cr
+        if reg == 0x04:
+            return ch.sr
+        if reg == 0x28:
+            return ch.length
+        return 0
+
+    @resume
+    async def write(self, offset, data):
+        ch, reg = self._split(offset)
+        await RisingEdge(ch.cpbus.cpdut.clk)
+        if reg == 0x00:
+            if data & 0x4:
+                for c in self.channels.values():
+                    c._reset()
+            else:
+                ch.cr = data
+                if data & 0x1:
+                    ch.sr &= ~SR_HALTED
+                else:
+                    ch._stop()
+        elif reg == 0x04:
+            ch.sr &= ~(data & 0x7000)          # write 1 to clear IOC/Dly/Err irq bits
 
 
 class DMA_Channel():
-    def __init__(self, cpbus: CocotbPynqBusInterface, direction: str):
+    def __init__(self, cpbus: CocotbPynqBusInterface, direction: str, mmio=None, max_size=(1 << MAX_C_SG_LENGTH_WIDTH) - 1):
+        if(direction not in ["read", "write"]):
+            raise ValueError("direction must be \"read\" or \"write\"")
         self.direction = direction
         self.cpbus = cpbus
-        self.idle_lock = Lock()
+        self.beat_bytes = len(cpbus.TDATA) // 8
+        self._mmio = mmio if mmio is not None else _Registers()
+        self._offset = 0x00 if direction == "write" else 0x30
+        self._mmio.channels[self._offset] = self
+        self._max_size = max_size
+        self._active_buffer = None
+        self._first_transfer = True
+        self._task = None
+        self.cr = 0x1                          # PYNQ's DMA driver starts both channels
+        self.sr = 0x0
+        self.length = 0
+        self.transferred = 0
         self.is_idle = Event()
+        self.is_idle.set()
         if(self.direction == "write"):
             self.cpbus.TVALID.value = 0b0
         else:
             self.cpbus.TREADY.value = 0b0
+
+    @property
+    def running(self):
+        return self._mmio.read(self._offset + 4) & 0x01 == 0x00
+
+    @property
+    def idle(self):
+        return self._mmio.read(self._offset + 4) & 0x02 == 0x02
+
+    @property
+    def error(self):
+        return self._mmio.read(self._offset + 4) & 0x70 != 0x0
+
+    def start(self):
+        self._mmio.write(self._offset, 0x0001)
+        self._first_transfer = True
+
+    def stop(self):
+        self._mmio.write(self._offset, 0x0000)
+
+    def transfer(self, array, start=0, nbytes=0):
+        if self.sr & SR_HALTED:
+            raise RuntimeError("DMA channel not started")
+        if not (self.sr & SR_IDLE) and not self._first_transfer:
+            raise RuntimeError("DMA channel not idle")
+        if nbytes == 0:
+            nbytes = array.nbytes - start
+        if nbytes > self._max_size:
+            raise ValueError(f"Transfer size is {nbytes} bytes, which exceeds the maximum DMA buffer size {self._max_size}.")
+        if start % self.beat_bytes or nbytes % self.beat_bytes:
+            raise MemoryError(f"Unaligned transfer: start and nbytes must be multiples of the {self.beat_bytes}-byte stream beat.")
+        if self.direction == "write" and hasattr(array, "flush"):
+            array.flush()
+        mem = getattr(array, "_dram", None)
+        if mem is None:
+            mem = array
+        mem = mem.reshape(-1).view("u1")[start:start + nbytes]
+        self._active_buffer = array
+        self._first_transfer = False
+        self.sr &= ~(SR_IDLE | SR_INTERR | SR_IOC)
+        self.length = nbytes
+        self.is_idle.clear()
+        stream = self.write_axi_stream if self.direction == "write" else self.read_axi_stream
+        self._task = cocotb.start_soon(stream(mem))
+
     @resume
     async def wait(self):
         await self.is_idle.wait()
-        self.idle_lock.release()
+        if self.sr & SR_INTERR:
+            raise RuntimeError("DMA Internal Error (transfer length 0?)")
+        if self.direction == "read" and hasattr(self._active_buffer, "invalidate"):
+            self._active_buffer.invalidate()
+        self.transferred = self.length
 
-    def transfer(self, array, start=0, nbytes=0):
-        if start % 4:
-            raise MemoryError("Unaligned transfer: start must be multiple of 4.")
-        if nbytes % 4:
-            raise MemoryError("Unaligned transfer: nbytes must be multiple of 4.")
-        if nbytes == 0:
-            nbytes = array.nbytes - start
-        if(self.direction not in ["read", "write"]):
-            raise ValueError("direction must be \"read\" or \"write\"")
-        if(not self.idle_lock.acquire(False)):
-            raise InterruptedError("DMA can not be accessed again until it has been waited")
-        self.is_idle.clear()
-        if (self.direction == "write"):
-            cocotb.start_soon(self.write_axi_stream(np.frombuffer(array, np.uint32, nbytes>>2, start)))
+    def _done(self, status):
+        self.sr |= status
+        self._task = None
+        self.is_idle.set()
+
+    def _stop(self):
+        if self._task is not None:
+            self._task.cancel()
+        self._task = None
+        if self.direction == "write":
+            self.cpbus.TVALID.value = 0b0
         else:
-            cocotb.start_soon(self.read_axi_stream(np.frombuffer(array, np.uint32, nbytes>>2, start)))
-        # buf = np.frombuffer(data, np.uint32, num_words, 0)
+            self.cpbus.TREADY.value = 0b0
+        self.sr |= SR_HALTED
+        self.is_idle.set()
 
-    async def write_axi_stream(self, array: np.ndarray):
+    def _reset(self):
+        self._stop()
+        self.cr = 0x0
+        self.sr = SR_HALTED
+        self.length = 0
+
+    async def write_axi_stream(self, mem):
         await self.cpbus.cpdut.await_reset()
+        n = self.beat_bytes
+        beats = len(mem) // n
         self.cpbus.TVALID.value = 0b1
-        for i in range(array.size):
-            self.cpbus.TDATA.value = int(array.flat[i])
-            self.cpbus.TLAST.value = 0b1 if (i == len(array) - 1) else 0b0
+        for i in range(beats):
+            self.cpbus.TDATA.value = int.from_bytes(mem[i * n:(i + 1) * n].tobytes(), "little")
+            self.cpbus.TLAST.value = 0b1 if (i == beats - 1) else 0b0
             await ReadOnly()
-            x_ready = self.cpbus.TREADY.value
-            while(x_ready == 0b0):
+            while(self.cpbus.TREADY.value == 0b0):
                 await RisingEdge(self.cpbus.cpdut.clk)
                 await ReadOnly()
-                x_ready = self.cpbus.TREADY.value
             await RisingEdge(self.cpbus.cpdut.clk)
         self.cpbus.TVALID.value = 0b0
-        self.is_idle.set()
-    
-    async def read_axi_stream(self, array: np.ndarray):
+        self._done(SR_IDLE | SR_IOC)
+
+    async def read_axi_stream(self, mem):
         await self.cpbus.cpdut.await_reset()
-        max_num_words = array.size
+        n = self.beat_bytes
+        beats = len(mem) // n
         self.cpbus.TREADY.value = 0b1
-        y_last = 0b0
-        for i in range(max_num_words):
+        got = 0
+        last = False
+        while got < beats and not last:
             await ReadOnly()
-            y_valid = self.cpbus.TVALID.value
-            while(y_valid == 0b0):
+            while(self.cpbus.TVALID.value == 0b0):
                 await RisingEdge(self.cpbus.cpdut.clk)
                 await ReadOnly()
-                y_valid = self.cpbus.TVALID.value
-            y_last = self.cpbus.TLAST.value
-            array.flat[i] = (int(self.cpbus.TDATA.value))
+            last = self.cpbus.TLAST.value == 0b1
+            mem[got * n:(got + 1) * n] = np.frombuffer(int(self.cpbus.TDATA.value).to_bytes(n, "little"), "u1")
+            got += 1
             await RisingEdge(self.cpbus.cpdut.clk)
-            if(y_last == 0b1):
-                break
         self.cpbus.TREADY.value = 0b0
-        self.is_idle.set()
-    
-
-
+        self.length = got * n
+        if last:
+            self._done(SR_IDLE | SR_IOC)
+        else:
+            self.sr |= SR_HALTED               # buffer full before TLAST
+            self._done(SR_INTERR)
