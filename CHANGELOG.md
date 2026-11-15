@@ -19,6 +19,7 @@ Both packages (cocotbpynq and pynq-pr) are released together under one version f
 
 ### Changed
 - `PRSystem.reconfigure()` waits up to 60 s for the new RM (was 10 s): a large netlist RM on the Vivado simulator can take longer to load.
+- The PR engine waits up to 600 s of wall-clock time for the simulation processes to start and for a shared-memory reconfigure (was 30 s), and `pr_reconfigure()` up to 50 ms of simulated time (was 5 ms): netlist RMs elaborate and run much more slowly than RTL. These are deadlock guards only; a healthy run is unaffected.
 
 ### Fixed
 - AXI-Lite writes deadlocked on a slave that waits for both AWVALID and WVALID.

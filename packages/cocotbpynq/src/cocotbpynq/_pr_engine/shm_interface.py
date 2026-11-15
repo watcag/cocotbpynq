@@ -87,7 +87,7 @@ class SharedMemoryInterface:
         shm_path: str,
         target: int = TARGET_STATIC,
         create: bool = False,
-        timeout: float = 30.0,
+        timeout: float = 600.0,
     ):
         """
         Initialize shared memory interface.
@@ -252,7 +252,7 @@ class SharedMemoryInterface:
         """
         self._send_command(CMD_WRITE, port_idx=port_idx, write_value=int(value) & 0xFFFFFFFFFFFFFFFF)
 
-    def reconfigure(self, rm_idx: int, poll_timeout: float = 30.0):
+    def reconfigure(self, rm_idx: int, poll_timeout: float = 600.0):
         """
         Request reconfiguration of the target partition.
 
